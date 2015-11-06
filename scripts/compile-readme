@@ -1,0 +1,8 @@
+#/bin/bash
+cat docs/boco-migrate.md > README.md
+
+for source in "docs/usage.md" "LICENSE"
+do
+  echo "\n" >> README.md
+  cat $source >> README.md
+done

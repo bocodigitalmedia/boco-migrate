@@ -4,12 +4,14 @@
   "description": "Abstract migration for Javascript",
   "main": "build/index.js",
   "scripts": {
-    "test": "./node_modules/.bin/coffee -l README.md",
+    "test": "NODE_PATH=$NODE_PATH:. ./node_modules/.bin/coffee -l README.md",
     "clean": "rm -rf build/**/*.js build/**/*.map",
-    "compile": "./node_modules/.bin/coffee -cmb -o build source",
-    "build": "npm test && npm run clean && npm run compile",
-    "preinstall": "npm run test && npm run build",
-    "preversion": "npm run test && npm run build"
+    "compile-readme": "./scripts/compile-readme",
+    "compile-coffee": "./node_modules/.bin/coffee -cmb -o build source",
+    "compile": "npm run compile-readme && npm run compile-coffee",
+    "build": "npm run clean && npm run compile",
+    "preinstall": "npm run build && npm test",
+    "preversion": "npm run build && npm test"
   },
   "repository": {
     "type": "git",
@@ -28,5 +30,8 @@
   "homepage": "https://github.com/bocodigitalmedia/boco-migrate#readme",
   "devDependencies": {
     "coffee-script": "^1.10.0"
+  },
+  "dependencies": {
+    "async": "^1.5.0"
   }
 }

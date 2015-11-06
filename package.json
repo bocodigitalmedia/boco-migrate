@@ -1,0 +1,32 @@
+{
+  "name": "boco-migrate",
+  "version": "0.0.1",
+  "description": "Abstract migration for Javascript",
+  "main": "build/index.js",
+  "scripts": {
+    "test": "./node_modules/.bin/coffee -l README.md",
+    "clean": "rm -rf build/**/*.js build/**/*.map",
+    "compile": "./node_modules/.bin/coffee -cmb -o build source",
+    "build": "npm test && npm run clean && npm run compile",
+    "preinstall": "npm run test && npm run build",
+    "preversion": "npm run test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bocodigitalmedia/boco-migrate.git"
+  },
+  "keywords": [
+    "migrate",
+    "migration",
+    "abstract"
+  ],
+  "author": "Christian Bradley <christian.bradley@bocodigital.com> (https://github.com/christianbradley)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bocodigitalmedia/boco-migrate/issues"
+  },
+  "homepage": "https://github.com/bocodigitalmedia/boco-migrate#readme",
+  "devDependencies": {
+    "coffee-script": "^1.10.0"
+  }
+}

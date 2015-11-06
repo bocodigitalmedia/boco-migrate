@@ -52,31 +52,27 @@
       migrator.up (error) ->
         return done error if error?
 
-        console.log "messages", messages
-        console.log "migrator.state", migrator.state
-        console.log "stateObject", stateObject
-
         assert.equal 3, messages.length
         assert.equal migration3.message, messages[2]
 
-        assert.equal migration3.name, migrator.state.lastMigrationName
-        assert.equal migration3.timestamp, migrator.state.lastMigrationTimestamp
-
-        assert.equal migration3.name, migrator.state.lastMigrationName
-        assert.equal migration3.timestamp, migrator.state.lastMigrationTimestamp
+        assert.equal migration3.name, stateObject.lastMigrationName
+        assert.equal migration3.timestamp, stateObject.lastMigrationTimestamp
 
         done()
 
 ### Migrate to the specified timestamp
 
-    tests.add "migrate to the specified timestamp", (done) ->
-        return done()
+    tests.add "migrate down the specified timestamp", (done) ->
 
-        migrator.migrate migration2.timestamp, (error) ->
+        migrator.down migration2.timestamp, (error) ->
           return done error if error?
-          console.log messages
+
           assert.equal 2, messages.length
-          assert.equal "message from migration2", messages[1]
+          assert.equal migration2.message, messages[1]
+
+          assert.equal migration2.name, stateObject.lastMigrationName
+          assert.equal migration2.timestamp, stateObject.lastMigrationTimestamp
+
           done()
 
 

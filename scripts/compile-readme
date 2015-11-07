@@ -1,8 +1,12 @@
 #/bin/bash
-cat docs/boco-migrate.md > README.md
+echo > README.md
 
-for source in "docs/usage.md" "LICENSE"
+for doc in "boco-migrate" "usage"
 do
-  echo "\n" >> README.md
-  cat $source >> README.md
+  cat "docs/$doc.coffee.md" >> README.md
+  echo >> README.md
 done
+
+echo "# License" >> README.md
+echo >> README.md
+cat LICENSE >> README.md

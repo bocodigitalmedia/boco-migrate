@@ -106,18 +106,17 @@ configure = function(dependencies) {
 
     State.prototype.lastMigrationTimestamp = null;
 
+    State.fromLastMigration = function(migration) {
+      var state;
+      return state = new State({
+        lastMigrationName: migration.name,
+        lastMigrationTimestamp: migration.timestamp
+      });
+    };
+
     function State(props) {
       $assign(this, props);
     }
-
-    State.prototype.setLastMigration = function(migration) {
-      var ref, ref1;
-      if (migration == null) {
-        migration = {};
-      }
-      this.lastMigrationTimestamp = (ref = migration.timestamp) != null ? ref : null;
-      return this.lastMigrationName = (ref1 = migration.name) != null ? ref1 : null;
-    };
 
     return State;
 
@@ -127,6 +126,9 @@ configure = function(dependencies) {
 
     function MemoryStateStore(props) {
       $assign(this, props);
+      if (this.stateObject == null) {
+        this.stateObject = {};
+      }
     }
 
     MemoryStateStore.prototype.save = function(state, done) {
@@ -160,7 +162,7 @@ configure = function(dependencies) {
       return this.collection[migrationIndex - 1];
     };
 
-    Migrations.prototype.sortAscByDate = function() {
+    Migrations.prototype.sortByDateAscending = function() {
       var collection;
       collection = this.collection.sort(function(a, b) {
         return a.getDate() - b.getDate();
@@ -170,7 +172,7 @@ configure = function(dependencies) {
       });
     };
 
-    Migrations.prototype.sortDescByDate = function() {
+    Migrations.prototype.sortByDateDescending = function() {
       var collection;
       collection = this.collection.sort(function(a, b) {
         return b.getDate() - a.getDate();
@@ -208,12 +210,12 @@ configure = function(dependencies) {
       });
     };
 
-    Migrations.prototype.forMigratingUpTo = function(targetTimestamp, currentTimestamp) {
-      return this.afterTimestamp(currentTimestamp).beforeIncludingTimestamp(targetTimestamp).sortAscByDate();
+    Migrations.prototype.forMigratingUp = function(fromTimestamp, toTimestamp) {
+      return this.afterTimestamp(fromTimestamp).beforeIncludingTimestamp(toTimestamp).sortByDateAscending();
     };
 
-    Migrations.prototype.forMigratingDownTo = function(targetTimestamp, currentTimestamp) {
-      return this.afterTimestamp(targetTimestamp).beforeIncludingTimestamp(currentTimestamp).sortDescByDate();
+    Migrations.prototype.forMigratingDown = function(fromTimestamp, toTimestamp) {
+      return this.beforeIncludingTimestamp(fromTimestamp).afterTimestamp(toTimestamp).sortByDateDescending();
     };
 
     Migrations.prototype.toArray = function() {
@@ -242,58 +244,80 @@ configure = function(dependencies) {
       return this.migrations.add(migration);
     };
 
-    Migrator.prototype.down = function() {
-      var args, done, i, ref, targetTimestamp;
-      args = 2 <= arguments.length ? slice.call(arguments, 0, i = arguments.length - 1) : (i = 0, []), done = arguments[i++];
-      targetTimestamp = (ref = args[0]) != null ? ref : null;
-      return this.stateStore.fetch((function(_this) {
-        return function(error, state) {
-          var currentTimestamp, migrations, runMigration;
+    Migrator.prototype.addMigrations = function() {
+      var args, i, len, migration, results;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      results = [];
+      for (i = 0, len = args.length; i < len; i++) {
+        migration = args[i];
+        results.push(this.addMigration(migration));
+      }
+      return results;
+    };
+
+    Migrator.prototype.runUpMigration = function(migration, done) {
+      console.log("up: " + migration);
+      return migration.up((function(_this) {
+        return function(error) {
+          var state;
           if (error != null) {
             return done(error);
           }
-          currentTimestamp = state.lastMigrationTimestamp;
-          migrations = _this.migrations.forMigratingDownTo(targetTimestamp, currentTimestamp);
-          runMigration = function(migration, done) {
-            return migration.down(function(error) {
-              var previousMigration;
-              if (error != null) {
-                return done(error);
-              }
-              state = new State();
-              previousMigration = _this.migrations.sortAscByDate().getMigrationBefore(migration);
-              state.setLastMigration(previousMigration);
-              return _this.stateStore.save(state, done);
-            });
-          };
-          return $asyncEachSeries(migrations.toArray(), runMigration, done);
+          state = State.fromLastMigration(migration);
+          return _this.stateStore.save(state, done);
         };
       })(this));
     };
 
-    Migrator.prototype.up = function() {
-      var args, done, i, ref, targetTimestamp;
-      args = 2 <= arguments.length ? slice.call(arguments, 0, i = arguments.length - 1) : (i = 0, []), done = arguments[i++];
-      targetTimestamp = (ref = args[0]) != null ? ref : null;
-      return this.stateStore.fetch((function(_this) {
-        return function(error, state) {
-          var currentTimestamp, migrations, runMigration;
+    Migrator.prototype.runDownMigration = function(migration, done) {
+      console.log("down: " + migration);
+      return migration.down((function(_this) {
+        return function(error) {
+          var previousMigration, state;
           if (error != null) {
             return done(error);
           }
+          previousMigration = _this.migrations.sortByDateAscending().getMigrationBefore(migration);
+          state = State.fromLastMigration(previousMigration);
+          return _this.stateStore.save(state, done);
+        };
+      })(this));
+    };
+
+    Migrator.prototype.runDownMigrations = function(fromTimestamp, toTimestamp, done) {
+      var migrationsToRun;
+      migrationsToRun = this.migrations.forMigratingDown(fromTimestamp, toTimestamp);
+      return $asyncEachSeries(migrationsToRun.toArray(), this.runDownMigration.bind(this), done);
+    };
+
+    Migrator.prototype.runUpMigrations = function(fromTimestamp, toTimestamp, done) {
+      var migrationsToRun;
+      migrationsToRun = this.migrations.forMigratingUp(fromTimestamp, toTimestamp);
+      return $asyncEachSeries(migrationsToRun.toArray(), this.runUpMigration.bind(this), done);
+    };
+
+    Migrator.prototype.migrate = function() {
+      var args, done, i;
+      args = 2 <= arguments.length ? slice.call(arguments, 0, i = arguments.length - 1) : (i = 0, []), done = arguments[i++];
+      return this.stateStore.fetch((function(_this) {
+        return function(error, state) {
+          var currentDate, currentTimestamp, isDownMigration, targetDate, targetTimestamp;
+          if (error != null) {
+            return done(error);
+          }
+          targetTimestamp = args[0];
+          targetDate = $getTimestampDate(targetTimestamp);
           currentTimestamp = state.lastMigrationTimestamp;
-          migrations = _this.migrations.forMigratingUpTo(targetTimestamp, currentTimestamp);
-          runMigration = function(migration, done) {
-            return migration.up(function(error) {
-              if (error != null) {
-                return done(error);
-              }
-              state = new State();
-              state.setLastMigration(migration);
-              return _this.stateStore.save(state, done);
-            });
-          };
-          return $asyncEachSeries(migrations.toArray(), runMigration, done);
+          currentDate = $getTimestampDate(currentTimestamp);
+          isDownMigration = (targetDate != null) && (currentDate != null) && targetDate < currentDate;
+          console.log(state);
+          console.log("targetTimestamp", targetTimestamp);
+          console.log("currentTimestamp", currentTimestamp);
+          console.log("isDownMigration", isDownMigration);
+          if (isDownMigration) {
+            return _this.runDownMigrations(currentTimestamp, targetTimestamp, done);
+          }
+          return _this.runUpMigrations(currentTimestamp, targetTimestamp, done);
         };
       })(this));
     };
@@ -302,11 +326,14 @@ configure = function(dependencies) {
 
   })();
   return BocoMigrate = {
+    BocoMigrateError: BocoMigrateError,
     IrreversibleMigration: IrreversibleMigration,
+    NotImplemented: NotImplemented,
     Migration: Migration,
     State: State,
-    Migrator: Migrator,
-    MemoryStateStore: MemoryStateStore
+    MemoryStateStore: MemoryStateStore,
+    Migrations: Migrations,
+    Migrator: Migrator
   };
 };
 

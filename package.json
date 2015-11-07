@@ -4,7 +4,7 @@
   "description": "Abstract migration for Javascript",
   "main": "build/index.js",
   "scripts": {
-    "test": "NODE_PATH=$NODE_PATH:. ./node_modules/.bin/coffee -l README.md",
+    "test": "./scripts/test-readme",
     "clean": "rm -rf build/**/*.js build/**/*.map",
     "compile-readme": "./scripts/compile-readme",
     "compile-coffee": "./node_modules/.bin/coffee -cmb -o build source",

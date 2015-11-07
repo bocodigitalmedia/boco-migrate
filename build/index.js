@@ -256,7 +256,6 @@ configure = function(dependencies) {
     };
 
     Migrator.prototype.runUpMigration = function(migration, done) {
-      console.log("up: " + migration);
       return migration.up((function(_this) {
         return function(error) {
           var state;
@@ -270,7 +269,6 @@ configure = function(dependencies) {
     };
 
     Migrator.prototype.runDownMigration = function(migration, done) {
-      console.log("down: " + migration);
       return migration.down((function(_this) {
         return function(error) {
           var previousMigration, state;
@@ -310,10 +308,6 @@ configure = function(dependencies) {
           currentTimestamp = state.lastMigrationTimestamp;
           currentDate = $getTimestampDate(currentTimestamp);
           isDownMigration = (targetDate != null) && (currentDate != null) && targetDate < currentDate;
-          console.log(state);
-          console.log("targetTimestamp", targetTimestamp);
-          console.log("currentTimestamp", currentTimestamp);
-          console.log("isDownMigration", isDownMigration);
           if (isDownMigration) {
             return _this.runDownMigrations(currentTimestamp, targetTimestamp, done);
           }

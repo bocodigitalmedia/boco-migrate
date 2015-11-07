@@ -3,7 +3,7 @@ echo > README.md
 
 for doc in "boco-migrate" "usage"
 do
-  cat "docs/$doc.coffee.md" >> README.md
+  cat "docs/$doc.md" >> README.md
   echo >> README.md
 done
 

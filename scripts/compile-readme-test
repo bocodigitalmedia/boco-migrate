@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+var Marked = require("marked");
+var File = require("fs");
+var Path = require("path");
+
+var readmePath = Path.resolve(__dirname, "..", "README.md");
+var testPath = Path.resolve(__dirname, "..", "test", "readme.coffee");
+var readme = File.readFileSync(readmePath).toString();
+
+var source = Marked.lexer(readme).
+  filter(function(token) {
+    return token.type == "code" && token.lang == "coffee";
+  }).
+  map(function(token) {
+    return token.text;
+  }).
+  join("\n");
+
+var header = [
+  'assert = require "assert"',
+  '_tests = []',
+  'test = (name, fn) -> _tests.push name: name, fn: fn'
+].join('\n')
+
+var footer = [
+  '_runTest = (test, done) ->',
+  '  console.log "* #{test.name}"',
+  '  test.fn done',
+  'require("async").eachSeries _tests, _runTest, (error) ->',
+  '  throw error if error?'
+].join('\n')
+
+File.writeFileSync(testPath, [header, source, footer].join("\n"));

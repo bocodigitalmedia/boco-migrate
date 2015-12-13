@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "cli.js",
+  "sourceRoot": "..",
+  "sources": [
+    "source/cli.coffee"
+  ],
+  "names": [],
+  "mappings": ";AAAA,IAAA;;AAAA,GAAA,GAAM,OAAA,CAAQ,GAAR,CAAY,CAAC;;AACf,IAAA,GAAA,CAAA,CAAK,CAAC,GAAN,CAAA"
+}

@@ -1,191 +1,332 @@
-configure = (dependencies) ->
+configure = ($ = {}) ->
+  $process = $.process ? process
+  $async = $.async ? require "async"
+  $lodash = $.lodash ? require "lodash"
+  $minimist = $.minimist ? require "minimist"
+  $path = $.path ? require "path"
+  $fs = $.fs ? require "fs"
 
-  $assign = (target, source) ->
-    target[key] = val for own key,val of source
-
-  $getTimestampDate = (timestamp) ->
-    return null unless timestamp?
-    return new Date timestamp
-
-  $asyncSeries = (series, done) ->
-    require("async").series series, done
-
-  $asyncEachSeries = (series, fn, done) ->
-    require("async").eachSeries series, fn, done
-
-  class BocoMigrateError extends Error
+  class MigrateError extends Error
     constructor: (props) ->
-      $assign this, props
+      super()
+      @[key] = val for own key, val of props
       Error.captureStackTrace @, @constructor
-      @name ?= @constructor.name
-      @message ?= @getDefaultMessage()
+      @name = @constructor.name
 
-  class IrreversibleMigration extends BocoMigrateError
-    migration: null
-    getDefaultMessage: -> "Migration '#{@migration.name}' is irreversible."
+  class IdentityNotUnique extends MigrateError
+    message: "Identity not unique"
 
-  class NotImplemented extends BocoMigrateError
-    getDefaultMessage: -> "Not implemented"
+  class MigrationNotFound extends MigrateError
+    message: "Migration not found"
+
+  class IrreversibleMigration extends MigrateError
+    message: "Irreversible Migration"
+
+  class NotImplemented extends MigrateError
+    message: "Not implemented"
 
   class Migration
+    id: null
     name: null
-    timestamp: null
 
     constructor: (props) ->
-      $assign this, props
+      @[key] = val for own key, val of props
 
     up: (done) ->
-      done new NotImplemented()
+      done new NotImplemented
 
     down: (done) ->
-      done new IrreversibleMigration(migration: this)
+      done new IrreversibleMigration
 
-    getDate: ->
-      new Date @timestamp
+  class StorageAdapter
+    constructor: (props = {}) ->
+      @data = props.data ? {}
 
-  class State
-    lastMigrationName: null
-    lastMigrationTimestamp: null
+    setLatestMigrationId: (id, done) ->
+      done null, (@data.latestMigrationId = id)
 
-    @fromLastMigration: (migration) ->
-      state = new State
-        lastMigrationName: migration.name
-        lastMigrationTimestamp: migration.timestamp
+    getLatestMigrationId: (done) ->
+      done null, @data.latestMigrationId
 
-    constructor: (props) ->
-      $assign this, props
-
-  class MemoryStateStore
-    stateObject: null
+  class FileStorageAdapter extends StorageAdapter
+    path: null
 
     constructor: (props) ->
-      $assign this, props
-      @stateObject ?= {}
+      @[key] = val for own key, val of props
 
-    save: (state, done) ->
-      @stateObject.lastMigrationName = state.lastMigrationName
-      @stateObject.lastMigrationTimestamp = state.lastMigrationTimestamp
-      done()
+    setLatestMigrationId: (id, done) ->
+      json = JSON.stringify latestMigrationId: id
+      $fs.writeFile @path, json, (error) ->
+        return done null, id
 
-    fetch: (done) ->
-      done null, new State(@stateObject)
+    getLatestMigrationId: (done) ->
+      $fs.readFile @path, "utf8", (error, json) =>
+        return @setLatestMigrationId(null, done) if error?.code is "ENOENT"
+        return done error if error?
 
-  class Migrations
-    collection: null
+        try
+          done null, JSON.parse(json).latestMigrationId
+        catch error
+          done error
+
+  class RedisStorageAdapter extends StorageAdapter
+    redisClient: null
+    keyPrefix: null
+    keyJoinString: null
 
     constructor: (props) ->
-      $assign this, props
-      @collection = if @collection? then @collection.slice() else []
+      @[key] = val for own key, val of props
+      @keyPrefix ?= "migrator"
+      @keyJoinString ?= ":"
 
-    add: (migration) ->
-      @collection.push migration
+    getKeyName: (propName) ->
+      [@keyPrefix, propName].join @keyJoinString
 
-    getMigrationBefore: (migration) ->
-      migrationIndex = @collection.indexOf(migration)
-      @collection[migrationIndex - 1]
+    setLatestMigrationId: (id, done) ->
+      keyName = @getKeyName "latest_migration_id"
+      @redisClient.set keyName, id, done
 
-    sortByDateAscending: ->
-      collection = @collection.sort (a, b) -> a.getDate() - b.getDate()
-      new Migrations collection: collection
-
-    sortByDateDescending: ->
-      collection = @collection.sort (a, b) -> b.getDate() - a.getDate()
-      new Migrations collection: collection
-
-    afterTimestamp: (timestamp) ->
-      date = $getTimestampDate timestamp
-      return this unless date?
-
-      collection = @collection.filter (migration) ->
-        migration.getDate() > date
-
-      new Migrations collection: collection
-
-    beforeIncludingTimestamp: (timestamp) ->
-      date = $getTimestampDate timestamp
-      return this unless date?
-
-      collection = @collection.filter (migration) ->
-        migration.getDate() <= date
-
-      new Migrations collection: collection
-
-    forMigratingUp: (fromTimestamp, toTimestamp) ->
-      this
-        .afterTimestamp(fromTimestamp)
-        .beforeIncludingTimestamp(toTimestamp)
-        .sortByDateAscending()
-
-    forMigratingDown: (fromTimestamp, toTimestamp) ->
-      this
-        .beforeIncludingTimestamp(fromTimestamp)
-        .afterTimestamp(toTimestamp)
-        .sortByDateDescending()
-
-    toArray: ->
-      @collection.slice()
+    getLatestMigrationId: (done) ->
+      keyName = @getKeyName "latest_migration_id"
+      @redisClient.get keyName, done
 
   class Migrator
     migrations: null
-    stateStore: null
+    storageAdapter: null
 
     constructor: (props) ->
-      $assign this, props
-      @migrations ?= new Migrations()
-      @stateStore ?= new MemoryStateStore()
+      @[key] = val for own key, val of props when key isnt "storageAdapter"
+      @migrations ?= []
+      @setStorageAdapter props.storageAdapter
+
+    setStorageAdapter: (storageAdapter) ->
+      @storageAdapter = storageAdapter ? new StorageAdapter
 
     addMigration: (migration) ->
-      @migrations.add migration
+      migration = new Migration(migration) unless migration instanceof Migration
+      @migrations.push migration
+      migration
 
-    addMigrations: (args...) ->
-      @addMigration migration for migration in args
+    findMigrationById: (id) ->
+      index = @findMigrationIndexById(id)
+      @migrations[index]
+
+    findMigrationIndexById: (id) ->
+      index = $lodash.findIndex @migrations, (migration) -> migration.id is id
+      throw new MigrationNotFound unless index? and index > -1
+      return index
+
+    getLatestMigrationIndex: (done) ->
+      @storageAdapter.getLatestMigrationId (error, latestId) =>
+        return done(error) if error?
+        return done(null, -1) unless latestId?
+        return done(null, @findMigrationIndexById(latestId))
+
+    getUpMigrations: (latestIndex = -1, targetIndex) ->
+      targetIndex ?= @collection.length - 1
+      startIndex = latestIndex + 1
+      @migrations.slice(startIndex, targetIndex + 1)
+
+    getDownMigrations: (latestIndex = -1, targetIndex) ->
+      targetIndex ?= -1
+      startIndex = targetIndex + 1
+      @migrations.slice(startIndex, latestIndex + 1).reverse()
+
+    migrate: (targetId, done) ->
+      try
+        targetIndex = @findMigrationIndexById(targetId) if targetId?
+        targetIndex ?= @migrations.length - 1
+      catch error
+        return done error
+
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done(error) if error?
+        return done() if targetIndex is latestIndex
+
+        if targetIndex > latestIndex
+          migrations = @getUpMigrations latestIndex, targetIndex
+          return @runUpMigrations migrations, done
+
+        if targetIndex < latestIndex
+          migrations = @getDownMigrations latestIndex, targetIndex
+          return @runDownMigrations migrations, done
+
+    rollback: (done) ->
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done() if latestIndex < 0
+        @runDownMigration @migrations[latestIndex], done
+
+    reset: (done) ->
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done(error) if error?
+        migrations = @getDownMigrations latestIndex
+        @runDownMigrations migrations, done
 
     runUpMigration: (migration, done) ->
       migration.up (error) =>
         return done error if error?
-        state = State.fromLastMigration migration
-        @stateStore.save state, done
+        @storageAdapter.setLatestMigrationId migration.id, done
+
+    runUpMigrations: (migrations, done) ->
+      $async.eachSeries migrations, @runUpMigration.bind(@), done
 
     runDownMigration: (migration, done) ->
       migration.down (error) =>
         return done error if error?
-        previousMigration = @migrations
-          .sortByDateAscending()
-          .getMigrationBefore(migration)
-        state = State.fromLastMigration previousMigration
-        @stateStore.save state, done
 
-    runDownMigrations: (fromTimestamp, toTimestamp, done) ->
-      migrationsToRun = @migrations.forMigratingDown fromTimestamp, toTimestamp
-      $asyncEachSeries migrationsToRun.toArray(), @runDownMigration.bind(this), done
+        index = @findMigrationIndexById migration.id
+        latestMigration = @migrations[index - 1]
+        @storageAdapter.setLatestMigrationId latestMigration?.id, done
 
-    runUpMigrations: (fromTimestamp, toTimestamp, done) ->
-      migrationsToRun = @migrations.forMigratingUp fromTimestamp, toTimestamp
-      $asyncEachSeries migrationsToRun.toArray(), @runUpMigration.bind(this), done
+    runDownMigrations: (migrations, done) ->
+      $async.eachSeries migrations, @runDownMigration.bind(@), done
 
-    migrate: (args..., done) ->
-      @stateStore.fetch (error, state) =>
+  class CLI
+
+    getHelp: ->
+      cmd = $path.basename $process.argv[1]
+      """
+      Usage: #{cmd} <options...> <command>
+
+      options:
+        -h, --help                   show this help screen
+        -e, --example                show an example migrator factory
+        -f, --factory=factory_path   path to the migrator factory
+                                     defaults to "migratorFactory.js"
+
+      commands:
+        migrate
+          Migrate to the (optional) target migration id
+        rollback
+          Roll back the latest migration
+        reset
+          Roll back all migrations
+        info
+          Show migration information
+
+      factory:
+        A javascript file that exports a single async factory method,
+        returning a migrator instance for the CLI.
+      """
+
+    showHelp: (code = 0) ->
+      $process.stdout.write @getHelp() + "\n"
+      $process.exit code
+
+    getExample: ->
+      """
+      // file: "migratorFactory.js"
+      var MyDBLib = require("my-db-lib");
+      var MyDBAdapter = require("my-db-adapter");
+      var MyDBMigrations = require("my-db-migrations");
+      var Migrator = require("boco-migrate").Migrator;
+
+      module.exports = function(done) {
+
+        MyDBLib.connect(function(error, db) {
+          var adapter = new MyDBAdapter({ db: db });
+          var migrator = new Migrator({ adapter: adapter });
+          var migrations = MyDBMigrations.configure({ db: db });
+
+          migrations.forEach(function(migration) {
+            migrator.addMigration(migration);
+          });
+
+          return done(null, migrator);
+      };
+      """
+
+    showExample: ->
+      $process.stdout.write @getExample() + "\n"
+
+    getMigrator: (factoryPath, done) ->
+      path = $path.resolve $process.cwd(), factoryPath
+      path = "./#{path}" unless /^[\\\/]/.test(path)
+      require(path)(done)
+
+    migrate: (migrator, targetId, done) ->
+      migrator.migrate targetId, done
+
+    rollback: (migrator, done) ->
+      migrator.rollback done
+
+    reset: (migrator, done) ->
+      migrator.reset done
+
+    info: (migrator, done) ->
+      migrator.getLatestMigrationIndex (error, latestIndex) ->
         return done error if error?
+        migrations = migrator.migrations
+        pendingCount = migrations.length - 1 - latestIndex
 
-        targetTimestamp = args[0]
-        targetDate = $getTimestampDate targetTimestamp
+        $process.stdout.write "key: [ - previous | > latest | + pending ]\n\n"
 
-        currentTimestamp = state.lastMigrationTimestamp
-        currentDate = $getTimestampDate currentTimestamp
+        migrations.forEach (migration, index) ->
+          {id, name = ''} = migration
 
-        isDownMigration = targetDate? and currentDate? and targetDate < currentDate
+          if index < latestIndex then key = "-"
+          if index is latestIndex then key = ">"
+          if index > latestIndex then key = "+"
 
-        return @runDownMigrations currentTimestamp, targetTimestamp, done if isDownMigration
-        return @runUpMigrations currentTimestamp, targetTimestamp, done
+          line = [key, id, name].join(" ")
+          $process.stdout.write line + "\n"
+
+        $process.stdout.write "\nYou have #{pendingCount} pending migrations\n"
+        done()
+
+    getParams: ->
+      argv = $process.argv.slice(2)
+
+      minimist = $minimist argv,
+        boolean: ["example", "help"]
+        string: ["factory"]
+        default:
+          factory: "migratorFactory.js"
+        alias:
+          help: "h"
+          factory: "f"
+          example: "e"
+
+      params =
+        help: minimist.help
+        example: minimist.example
+        command: minimist._[0]
+        factory: minimist.factory
+        args: minimist._.slice(1)
+
+    run: ->
+      params = @getParams()
+      {help, example, command, factory, args} = params
+      return @showHelp() if help
+      return @showExample() if example
+
+      done = (error) ->
+        throw error if error?
+        $process.exit()
+
+      return done "missing option: --factory" unless factory?
+
+      @getMigrator factory, (error, migrator) =>
+        return done(error) if error?
+
+        switch command
+          when "migrate" then @migrate migrator, args[0], done
+          when "rollback" then @rollback migrator, done
+          when "reset" then @reset migrator, done
+          when "info" then @info migrator, done
+          else @showHelp 1
 
   BocoMigrate =
-    BocoMigrateError: BocoMigrateError
+    MigrateError: MigrateError
     IrreversibleMigration: IrreversibleMigration
     NotImplemented: NotImplemented
+    MigrationNotFound: MigrationNotFound
+
     Migration: Migration
-    State: State
-    MemoryStateStore: MemoryStateStore
-    Migrations: Migrations
+    StorageAdapter: StorageAdapter
+    FileStorageAdapter: FileStorageAdapter
+    RedisStorageAdapter: RedisStorageAdapter
     Migrator: Migrator
+    CLI: CLI
 
 module.exports = configure()

@@ -65,16 +65,61 @@ describe "boco-migrate", ->
             expect(lastMigration).toEqual null
             ok()
 
-    describe "Irreversible Migrations", ->
+    describe "Storage Adapters", ->
 
-      beforeEach ->
-        migrator.addMigration
-          id: "migration4"
-          up: (done) -> lastMigration = @id; done()
+      describe "File Storage Adapter", ->
 
-      it "A migration that has not defined a `down` method will raise an `IrreversibleMigration` error.", (ok) ->
-        migrator.migrate null, (error) ->
-          throw error if error?
-          migrator.rollback (error) ->
-            expect(error.constructor).toEqual BocoMigrate.IrreversibleMigration
+        it "The `BocoMigrate.FileStorageAdapter` writes data to the JSON file specified by the `path` provided.", (ok) ->
+          adapter = new BocoMigrate.FileStorageAdapter
+            path: "migratorStorage.json"
+          
+          migrator.setStorageAdapter adapter
+          
+          migrator.migrate null, (error) ->
+            throw error if error?
+            adapter.getLatestMigrationId (error, id) ->
+              throw error if error?
+              expect(id).toEqual "migration3"
+              ok()
+
+      describe "Redis Storage Adapter", ->
+
+        it "The `BocoMigrate.RedisStorageAdapter` writes data to a `redis` instance.", (ok) ->
+          redisClient = require("redis").createClient()
+          
+          adapter = new BocoMigrate.RedisStorageAdapter
+            redisClient: redisClient
+            keyPrefix: "migrator"
+            keyJoinString: "_"
+          
+          migrator.setStorageAdapter adapter
+          
+          migrator.migrate null, (error) ->
+            throw error if error?
+            adapter.getLatestMigrationId (error, id) ->
+              throw error if error?
+              expect(id).toEqual "migration3"
+              ok()
+
+    describe "Exceptions", ->
+
+      describe "Irreversible Migrations", ->
+
+        beforeEach ->
+          migrator.addMigration
+            id: "migration4"
+            up: (done) -> lastMigration = @id; done()
+
+        it "A migration that has not defined a `down` method will raise an `IrreversibleMigration` error.", (ok) ->
+          migrator.migrate null, (error) ->
+            throw error if error?
+            migrator.rollback (error) ->
+              expect(error.constructor).toEqual BocoMigrate.IrreversibleMigration
+              ok()
+
+      describe "Migration not Found", ->
+
+        it "If you pass an id to `migrate` that is not found, it will raise a `MigrationNotFound` error.", (ok) ->
+          migrator.migrate "i dont exist", (error) ->
+            expect(error.constructor).toEqual BocoMigrate.MigrationNotFound
             ok()

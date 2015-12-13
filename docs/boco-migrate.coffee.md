@@ -13,10 +13,14 @@ Migrate all your things (not just databases)!
   * [Migrating]
   * [Rolling Back]
   * [Resetting]
-  * [Irreversible Migrations]
-* [Storage Adapters]
-  * [Available Adapters]
-  * [Write an Adapter]
+  * [Storage Adapters]
+    * [File Storage Adapter]
+    * [Redis Storage Adapter]
+    * [Write an Adapter]
+  * [Exceptions]
+    * [Irreversible Migrations]
+    * [Migration not Found]
+  * [Using the CLI]
 
 ## Installation
 
@@ -102,7 +106,60 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
-### Irreversible Migrations
+### Storage Adapters
+
+In order for the migrator to persist its state, you must provide it with an adapter for the storage mechanism of your choice.
+
+The default `StorageAdapter` is non-persistent, and thus is primarily used only for testing or as the parent class for other adapters.
+
+#### File Storage Adapter
+
+The `BocoMigrate.FileStorageAdapter` writes data to the JSON file specified by the `path` provided.
+
+```coffee
+adapter = new BocoMigrate.FileStorageAdapter
+  path: "migratorStorage.json"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+#### Redis Storage Adapter
+
+The `BocoMigrate.RedisStorageAdapter` writes data to a `redis` instance.
+
+```coffee
+redisClient = require("redis").createClient()
+
+adapter = new BocoMigrate.RedisStorageAdapter
+  redisClient: redisClient
+  keyPrefix: "migrator"
+  keyJoinString: "_"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+#### Writing an Adapter
+
+If you do not see an adapter you need, just subclass the `StorageAdapter` class and modify it to suit the needs of your storage mechanism. If you end up writing an adapter, please [create an issue for your adapter] on this repository's github page.
+
+
+### Exceptions
+
+#### Irreversible Migrations
 
 A migration that has not defined a `down` method will raise an `IrreversibleMigration` error.
 
@@ -122,7 +179,17 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
-## Using the CLI
+#### Migration not Found
+
+If you pass an id to `migrate` that is not found, it will raise a `MigrationNotFound` error.
+
+```coffee
+migrator.migrate "i dont exist", (error) ->
+  expect(error.constructor).toEqual BocoMigrate.MigrationNotFound
+  ok()
+```
+
+### Using the CLI
 
 A CLI is provided with this package to allow you to run your migrations from the command line.
 
@@ -150,7 +217,7 @@ factory:
   returning a migrator instance for the CLI.
 ```
 
-### Creating a Migrator Factory
+#### Creating a Migrator Factory
 
 Your migrator factory file must export a single async function, and returns a `Migrator` instance. This allows you to connect to databases and perform other asynchronous tasks to initialize both the migrator as well as your migrations.
 
@@ -176,26 +243,25 @@ module.exports = function(done) {
 };
 ```
 
-## Storage Adapters
-
-In order for the migrator to persist its state, you must provide it with a storage adapter for the storage mechanism of your choice.
-
-The default `StorageAdapter` is non-persistent, and primarily used for testing or as a parent class for extended adapters.
-
-### Available Adapters
-
-The `StorageAdapter` interface is currently in flux, and expected to be settled shortly in __v2.0__. Once the interface has been locked down, I will release a few options and list them here.
-
-
 [Installation]: #installation
+
 [Usage]: #usage
 [Migrating]: #migrating
 [Rolling Back]: #rolling-back
 [Resetting]: #resetting
-[Irreversible Migrations]: #irreversible-migrations
+
 [Storage Adapters]: #storage-adapters
-[Available Adapters]: #available-adapters
+[File Storage Adapter]: #file-storage-adapter
+[Redis Storage Adapter]: #redis-storage-adapter
 [Write an Adapter]: #write-an-adapter
+[create an issue for your adapter]: https://github.com/bocodigitalmedia/boco-migrate/issues/new?title=Storage%20Adapter%20for:%20MyStorageType&labels=enhancement
+
+[Exceptions]: #exceptions
+[Irreversible Migrations]: #irreversible-migrations
+[Migration not Found]: #migration-not-found
+
+[Using the CLI]: #using-the-cli
+[Creating a Migrator Factory]: #creating-a-migrator-factory
 
 [npm]: http://npmjs.org
 [github]: http://www.github.com

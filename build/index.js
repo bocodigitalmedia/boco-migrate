@@ -4,15 +4,16 @@ var configure,
   hasProp = {}.hasOwnProperty;
 
 configure = function($) {
-  var $async, $lodash, $minimist, $path, $process, BocoMigrate, CLI, IdentityNotUnique, IrreversibleMigration, MigrateError, Migration, MigrationNotFound, Migrator, NotImplemented, StorageAdapter, ref, ref1, ref2, ref3, ref4;
+  var $async, $fs, $lodash, $minimist, $path, $process, BocoMigrate, CLI, FileStorageAdapter, IdentityNotUnique, IrreversibleMigration, MigrateError, Migration, MigrationNotFound, Migrator, NotImplemented, RedisStorageAdapter, StorageAdapter, ref, ref1, ref2, ref3, ref4, ref5;
   if ($ == null) {
     $ = {};
   }
-  $async = (ref = $.async) != null ? ref : require("async");
-  $lodash = (ref1 = $.lodash) != null ? ref1 : require("lodash");
-  $minimist = (ref2 = $.minimist) != null ? ref2 : require("minimist");
-  $process = (ref3 = $.process) != null ? ref3 : process;
+  $process = (ref = $.process) != null ? ref : process;
+  $async = (ref1 = $.async) != null ? ref1 : require("async");
+  $lodash = (ref2 = $.lodash) != null ? ref2 : require("lodash");
+  $minimist = (ref3 = $.minimist) != null ? ref3 : require("minimist");
   $path = (ref4 = $.path) != null ? ref4 : require("path");
+  $fs = (ref5 = $.fs) != null ? ref5 : require("fs");
   MigrateError = (function(superClass) {
     extend(MigrateError, superClass);
 
@@ -105,9 +106,31 @@ configure = function($) {
 
   })();
   StorageAdapter = (function() {
-    StorageAdapter.prototype.latestMigrationId = null;
-
     function StorageAdapter(props) {
+      var ref6;
+      if (props == null) {
+        props = {};
+      }
+      this.data = (ref6 = props.data) != null ? ref6 : {};
+    }
+
+    StorageAdapter.prototype.setLatestMigrationId = function(id, done) {
+      return done(null, (this.data.latestMigrationId = id));
+    };
+
+    StorageAdapter.prototype.getLatestMigrationId = function(done) {
+      return done(null, this.data.latestMigrationId);
+    };
+
+    return StorageAdapter;
+
+  })();
+  FileStorageAdapter = (function(superClass) {
+    extend(FileStorageAdapter, superClass);
+
+    FileStorageAdapter.prototype.path = null;
+
+    function FileStorageAdapter(props) {
       var key, val;
       for (key in props) {
         if (!hasProp.call(props, key)) continue;
@@ -116,17 +139,82 @@ configure = function($) {
       }
     }
 
-    StorageAdapter.prototype.setLatestMigrationId = function(id, done) {
-      return done(null, (this.latestMigrationId = id));
+    FileStorageAdapter.prototype.setLatestMigrationId = function(id, done) {
+      var json;
+      json = JSON.stringify({
+        latestMigrationId: id
+      });
+      return $fs.writeFile(this.path, json, function(error) {
+        return done(null, id);
+      });
     };
 
-    StorageAdapter.prototype.getLatestMigrationId = function(done) {
-      return done(null, this.latestMigrationId);
+    FileStorageAdapter.prototype.getLatestMigrationId = function(done) {
+      return $fs.readFile(this.path, "utf8", (function(_this) {
+        return function(error, json) {
+          var error1;
+          if ((error != null ? error.code : void 0) === "ENOENT") {
+            return _this.setLatestMigrationId(null, done);
+          }
+          if (error != null) {
+            return done(error);
+          }
+          try {
+            return done(null, JSON.parse(json).latestMigrationId);
+          } catch (error1) {
+            error = error1;
+            return done(error);
+          }
+        };
+      })(this));
     };
 
-    return StorageAdapter;
+    return FileStorageAdapter;
 
-  })();
+  })(StorageAdapter);
+  RedisStorageAdapter = (function(superClass) {
+    extend(RedisStorageAdapter, superClass);
+
+    RedisStorageAdapter.prototype.redisClient = null;
+
+    RedisStorageAdapter.prototype.keyPrefix = null;
+
+    RedisStorageAdapter.prototype.keyJoinString = null;
+
+    function RedisStorageAdapter(props) {
+      var key, val;
+      for (key in props) {
+        if (!hasProp.call(props, key)) continue;
+        val = props[key];
+        this[key] = val;
+      }
+      if (this.keyPrefix == null) {
+        this.keyPrefix = "migrator";
+      }
+      if (this.keyJoinString == null) {
+        this.keyJoinString = ":";
+      }
+    }
+
+    RedisStorageAdapter.prototype.getKeyName = function(propName) {
+      return [this.keyPrefix, propName].join(this.keyJoinString);
+    };
+
+    RedisStorageAdapter.prototype.setLatestMigrationId = function(id, done) {
+      var keyName;
+      keyName = this.getKeyName("latest_migration_id");
+      return this.redisClient.set(keyName, id, done);
+    };
+
+    RedisStorageAdapter.prototype.getLatestMigrationId = function(done) {
+      var keyName;
+      keyName = this.getKeyName("latest_migration_id");
+      return this.redisClient.get(keyName, done);
+    };
+
+    return RedisStorageAdapter;
+
+  })(StorageAdapter);
   Migrator = (function() {
     Migrator.prototype.migrations = null;
 
@@ -137,15 +225,19 @@ configure = function($) {
       for (key in props) {
         if (!hasProp.call(props, key)) continue;
         val = props[key];
-        this[key] = val;
+        if (key !== "storageAdapter") {
+          this[key] = val;
+        }
       }
       if (this.migrations == null) {
         this.migrations = [];
       }
-      if (this.storageAdapter == null) {
-        this.storageAdapter = new StorageAdapter;
-      }
+      this.setStorageAdapter(props.storageAdapter);
     }
+
+    Migrator.prototype.setStorageAdapter = function(storageAdapter) {
+      return this.storageAdapter = storageAdapter != null ? storageAdapter : new StorageAdapter;
+    };
 
     Migrator.prototype.addMigration = function(migration) {
       if (!(migration instanceof Migration)) {
@@ -211,12 +303,17 @@ configure = function($) {
     };
 
     Migrator.prototype.migrate = function(targetId, done) {
-      var targetIndex;
-      if (targetId != null) {
-        targetIndex = this.findMigrationIndexById(targetId);
-      }
-      if (targetIndex == null) {
-        targetIndex = this.migrations.length - 1;
+      var error, error1, targetIndex;
+      try {
+        if (targetId != null) {
+          targetIndex = this.findMigrationIndexById(targetId);
+        }
+        if (targetIndex == null) {
+          targetIndex = this.migrations.length - 1;
+        }
+      } catch (error1) {
+        error = error1;
+        return done(error);
       }
       return this.getLatestMigrationIndex((function(_this) {
         return function(error, latestIndex) {
@@ -355,8 +452,8 @@ configure = function($) {
         pendingCount = migrations.length - 1 - latestIndex;
         $process.stdout.write("key: [ - previous | > latest | + pending ]\n\n");
         migrations.forEach(function(migration, index) {
-          var id, key, line, name, ref5;
-          id = migration.id, name = (ref5 = migration.name) != null ? ref5 : '';
+          var id, key, line, name, ref6;
+          id = migration.id, name = (ref6 = migration.name) != null ? ref6 : '';
           if (index < latestIndex) {
             key = "-";
           }
@@ -448,6 +545,8 @@ configure = function($) {
     MigrationNotFound: MigrationNotFound,
     Migration: Migration,
     StorageAdapter: StorageAdapter,
+    FileStorageAdapter: FileStorageAdapter,
+    RedisStorageAdapter: RedisStorageAdapter,
     Migrator: Migrator,
     CLI: CLI
   };

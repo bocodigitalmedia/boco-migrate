@@ -13,8 +13,13 @@ Migrate all your things (not just databases)!
   * [Migrating]
   * [Rolling Back]
   * [Resetting]
-  * [Irreversible Migrations]
   * [Storage Adapters]
+    * [File Storage Adapter]
+    * [Redis Storage Adapter]
+    * [Write an Adapter]
+  * [Exceptions]
+    * [Irreversible Migrations]
+    * [Migration not Found]
   * [Using the CLI]
 
 ## Installation
@@ -101,7 +106,60 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
-### Irreversible Migrations
+### Storage Adapters
+
+In order for the migrator to persist its state, you must provide it with an adapter for the storage mechanism of your choice.
+
+The default `StorageAdapter` is non-persistent, and thus is primarily used only for testing or as the parent class for other adapters.
+
+#### File Storage Adapter
+
+The `BocoMigrate.FileStorageAdapter` writes data to the JSON file specified by the `path` provided.
+
+```coffee
+adapter = new BocoMigrate.FileStorageAdapter
+  path: "migratorStorage.json"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+#### Redis Storage Adapter
+
+The `BocoMigrate.RedisStorageAdapter` writes data to a `redis` instance.
+
+```coffee
+redisClient = require("redis").createClient()
+
+adapter = new BocoMigrate.RedisStorageAdapter
+  redisClient: redisClient
+  keyPrefix: "migrator"
+  keyJoinString: "_"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+#### Writing an Adapter
+
+If you do not see an adapter you need, just subclass the `StorageAdapter` class and modify it to suit the needs of your storage mechanism. If you end up writing an adapter, please [create an issue for your adapter] on this repository's github page.
+
+
+### Exceptions
+
+#### Irreversible Migrations
 
 A migration that has not defined a `down` method will raise an `IrreversibleMigration` error.
 
@@ -121,49 +179,14 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
-### Storage Adapters
+#### Migration not Found
 
-In order for the migrator to persist its state, you must provide it with an adapter for the storage mechanism of your choice.
-
-The default `StorageAdapter` is non-persistent, and thus is primarily used only for testing or as the parent class for other adapters.
-
-#### FileStorageAdapter
-
-The `FileStorageAdapter` writes data to the JSON file specified by the `path` provided.
+If you pass an id to `migrate` that is not found, it will raise a `MigrationNotFound` error.
 
 ```coffee
-adapter = new BocoMigrate.FileStorageAdapter
-  path: "migratorStorage.json"
-
-migrator.setStorageAdapter adapter
-
-migrator.migrate null, (error) ->
-  throw error if error?
-  adapter.getLatestMigrationId (error, id) ->
-    throw error if error?
-    expect(id).toEqual "migration3"
-    ok()
-```
-
-#### RedisStorageAdapter
-
-The `RedisStorageAdapter` writes data to a `redis` instance.
-
-```coffee
-redisClient = require("redis").createClient()
-adapter = new BocoMigrate.RedisStorageAdapter
-  redisClient: redisClient
-  keyPrefix: "migrator"
-  keyJoinString: "_"
-
-migrator.setStorageAdapter adapter
-
-migrator.migrate null, (error) ->
-  throw error if error?
-  adapter.getLatestMigrationId (error, id) ->
-    throw error if error?
-    expect(id).toEqual "migration3"
-    ok()
+migrator.migrate "i dont exist", (error) ->
+  expect(error.constructor).toEqual BocoMigrate.MigrationNotFound
+  ok()
 ```
 
 ### Using the CLI
@@ -221,13 +244,24 @@ module.exports = function(done) {
 ```
 
 [Installation]: #installation
+
 [Usage]: #usage
 [Migrating]: #migrating
 [Rolling Back]: #rolling-back
 [Resetting]: #resetting
-[Irreversible Migrations]: #irreversible-migrations
+
 [Storage Adapters]: #storage-adapters
+[File Storage Adapter]: #file-storage-adapter
+[Redis Storage Adapter]: #redis-storage-adapter
+[Write an Adapter]: #write-an-adapter
+[create an issue for your adapter]: https://github.com/bocodigitalmedia/boco-migrate/issues/new?title=Storage%20Adapter%20for:%20MyStorageType&labels=enhancement
+
+[Exceptions]: #exceptions
+[Irreversible Migrations]: #irreversible-migrations
+[Migration not Found]: #migration-not-found
+
 [Using the CLI]: #using-the-cli
+[Creating a Migrator Factory]: #creating-a-migrator-factory
 
 [npm]: http://npmjs.org
 [github]: http://www.github.com

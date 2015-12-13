@@ -133,8 +133,11 @@ configure = ($ = {}) ->
       @migrations.slice(startIndex, latestIndex + 1).reverse()
 
     migrate: (targetId, done) ->
-      targetIndex = @findMigrationIndexById(targetId) if targetId?
-      targetIndex ?= @migrations.length - 1
+      try
+        targetIndex = @findMigrationIndexById(targetId) if targetId?
+        targetIndex ?= @migrations.length - 1
+      catch error
+        return done error
 
       @getLatestMigrationIndex (error, latestIndex) =>
         return done(error) if error?

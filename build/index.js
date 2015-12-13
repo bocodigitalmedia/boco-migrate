@@ -303,12 +303,17 @@ configure = function($) {
     };
 
     Migrator.prototype.migrate = function(targetId, done) {
-      var targetIndex;
-      if (targetId != null) {
-        targetIndex = this.findMigrationIndexById(targetId);
-      }
-      if (targetIndex == null) {
-        targetIndex = this.migrations.length - 1;
+      var error, error1, targetIndex;
+      try {
+        if (targetId != null) {
+          targetIndex = this.findMigrationIndexById(targetId);
+        }
+        if (targetIndex == null) {
+          targetIndex = this.migrations.length - 1;
+        }
+      } catch (error1) {
+        error = error1;
+        return done(error);
       }
       return this.getLatestMigrationIndex((function(_this) {
         return function(error, latestIndex) {

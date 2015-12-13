@@ -122,6 +122,60 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
+## Using the CLI
+
+A CLI is provided with this package to allow you to run your migrations from the command line.
+
+```text
+Usage: boco-migrate <options...> <command>
+
+options:
+  -h, --help                   show this help screen
+  -e, --example                show an example migrator factory
+  -f, --factory=factory_path   path to the migrator factory
+                               defaults to "migratorFactory.js"
+
+commands:
+  migrate
+    Migrate to the (optional) target migration id
+  rollback
+    Roll back the latest migration
+  reset
+    Roll back all migrations
+  info
+    Show migration information
+
+factory:
+  A javascript file that exports a single async factory method,
+  returning a migrator instance for the CLI.
+```
+
+### Creating a Migrator Factory
+
+Your migrator factory file must export a single async function, and returns a `Migrator` instance. This allows you to connect to databases and perform other asynchronous tasks to initialize both the migrator as well as your migrations.
+
+```js
+// file: "migratorFactory.js"
+var MyDBLib = require("my-db-lib");
+var MyDBAdapter = require("my-db-adapter");
+var MyDBMigrations = require("my-db-migrations");
+var Migrator = require("boco-migrate").Migrator;
+
+module.exports = function(done) {
+
+  MyDBLib.connect(function(error, db) {
+    var adapter = new MyDBAdapter({ db: db });
+    var migrator = new Migrator({ adapter: adapter });
+    var migrations = MyDBMigrations.configure({ db: db });
+
+    migrations.forEach(function(migration) {
+      migrator.addMigration(migration);
+    });
+
+    return done(null, migrator);
+};
+```
+
 ## Storage Adapters
 
 In order for the migrator to persist its state, you must provide it with a storage adapter for the storage mechanism of your choice.

@@ -15,8 +15,11 @@
     "url": "git+https://github.com/bocodigitalmedia/boco-migrate.git"
   },
   "keywords": [
+    "boco",
     "migrate",
     "migration",
+    "migrating",
+    "migrator",
     "database"
   ],
   "author": "Christian Bradley <christian.bradley@bocodigital.com> (https://github.com/christianbradley)",

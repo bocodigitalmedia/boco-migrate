@@ -305,7 +305,7 @@ configure = function($) {
     CLI.prototype.getHelp = function() {
       var cmd;
       cmd = $path.basename($process.argv[1]);
-      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  -h, --help                   show this help screen\n  -e, --example                show an example migrator factory\n  -f, --factory=factory_path   path to the migrator factory\n                               defaults to \"migrator.js\"\n\ncommands:\n  migrate\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the latest migration\n  reset\n    Roll back all migrations\n  info\n    Show migration information\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
+      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  -h, --help                   show this help screen\n  -e, --example                show an example migrator factory\n  -f, --factory=factory_path   path to the migrator factory\n                               defaults to \"migratorFactory.js\"\n\ncommands:\n  migrate\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the latest migration\n  reset\n    Roll back all migrations\n  info\n    Show migration information\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
     };
 
     CLI.prototype.showHelp = function(code) {
@@ -317,10 +317,10 @@ configure = function($) {
     };
 
     CLI.prototype.getExample = function() {
-      return "// example factory.js\nmodule.exports = function(done) {\n  require(\"my-database-lib\").connect(function(error, connection) {\n    if(error != null) { return done(error); }\n\n    var BocoMigrate = require(\"boco-migrate\");\n    var MyStorageAdapter = require(\"my-database-storage-adapter\");\n\n    var storageAdapter = new MyStorageAdapter({\n      connection: connection\n    });\n\n    var migrator = new BocoMigrate.Migrator({\n      storageAdapter: storageAdapter\n    });\n\n    var migrations = require(\"./migrations\").configure({\n      connection: connection\n    });\n\n    migrator.addMigrations(migrations);\n    return done(null, migrator);\n  });\n};";
+      return "// file: \"migratorFactory.js\"\nvar MyDBLib = require(\"my-db-lib\");\nvar MyDBAdapter = require(\"my-db-adapter\");\nvar MyDBMigrations = require(\"my-db-migrations\");\nvar Migrator = require(\"boco-migrate\").Migrator;\n\nmodule.exports = function(done) {\n\n  MyDBLib.connect(function(error, db) {\n    var adapter = new MyDBAdapter({ db: db });\n    var migrator = new Migrator({ adapter: adapter });\n    var migrations = MyDBMigrations.configure({ db: db });\n\n    migrations.forEach(function(migration) {\n      migrator.addMigration(migration);\n    });\n\n    return done(null, migrator);\n};";
     };
 
-    CLI.prototype.example = function() {
+    CLI.prototype.showExample = function() {
       return $process.stdout.write(this.getExample() + "\n");
     };
 
@@ -381,7 +381,7 @@ configure = function($) {
         boolean: ["example", "help"],
         string: ["factory"],
         "default": {
-          factory: "migrator.js"
+          factory: "migratorFactory.js"
         },
         alias: {
           help: "h",

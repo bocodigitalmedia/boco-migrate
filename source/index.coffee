@@ -145,7 +145,7 @@ configure = ($ = {}) ->
         -h, --help                   show this help screen
         -e, --example                show an example migrator factory
         -f, --factory=factory_path   path to the migrator factory
-                                     defaults to "migrator.js"
+                                     defaults to "migratorFactory.js"
 
       commands:
         migrate
@@ -168,33 +168,28 @@ configure = ($ = {}) ->
 
     getExample: ->
       """
-      // example factory.js
+      // file: "migratorFactory.js"
+      var MyDBLib = require("my-db-lib");
+      var MyDBAdapter = require("my-db-adapter");
+      var MyDBMigrations = require("my-db-migrations");
+      var Migrator = require("boco-migrate").Migrator;
+
       module.exports = function(done) {
-        require("my-database-lib").connect(function(error, connection) {
-          if(error != null) { return done(error); }
 
-          var BocoMigrate = require("boco-migrate");
-          var MyStorageAdapter = require("my-database-storage-adapter");
+        MyDBLib.connect(function(error, db) {
+          var adapter = new MyDBAdapter({ db: db });
+          var migrator = new Migrator({ adapter: adapter });
+          var migrations = MyDBMigrations.configure({ db: db });
 
-          var storageAdapter = new MyStorageAdapter({
-            connection: connection
+          migrations.forEach(function(migration) {
+            migrator.addMigration(migration);
           });
 
-          var migrator = new BocoMigrate.Migrator({
-            storageAdapter: storageAdapter
-          });
-
-          var migrations = require("./migrations").configure({
-            connection: connection
-          });
-
-          migrator.addMigrations(migrations);
           return done(null, migrator);
-        });
       };
       """
 
-    example: ->
+    showExample: ->
       $process.stdout.write @getExample() + "\n"
 
     getMigrator: (factoryPath, done) ->
@@ -239,7 +234,7 @@ configure = ($ = {}) ->
         boolean: ["example", "help"]
         string: ["factory"]
         default:
-          factory: "migrator.js"
+          factory: "migratorFactory.js"
         alias:
           help: "h"
           factory: "f"

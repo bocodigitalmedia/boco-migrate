@@ -70,36 +70,48 @@ configure = ($ = {}) ->
       throw new MigrationNotFound unless index? and index > -1
       return index
 
-    migrate: (targetId, done) ->
+    getLatestMigrationIndex: (done) ->
       @storageAdapter.getLatestMigrationId (error, latestId) =>
         return done(error) if error?
+        return done(null, -1) unless latestId?
+        return done(null, @findMigrationIndexById(latestId))
 
-        latestIndex = @findMigrationIndexById(latestId) if latestId?
-        targetIndex = @findMigrationIndexById(targetId) if targetId?
-        latestIndex ?= -1
-        targetIndex ?= @migrations.length - 1
+    getUpMigrations: (latestIndex = -1, targetIndex) ->
+      targetIndex ?= @collection.length - 1
+      startIndex = latestIndex + 1
+      @migrations.slice(startIndex, targetIndex + 1)
 
+    getDownMigrations: (latestIndex = -1, targetIndex) ->
+      targetIndex ?= -1
+      startIndex = targetIndex + 1
+      @migrations.slice(startIndex, latestIndex + 1).reverse()
+
+    migrate: (targetId, done) ->
+      targetIndex = @findMigrationIndexById(targetId) if targetId?
+      targetIndex ?= @migrations.length - 1
+
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done(error) if error?
         return done() if targetIndex is latestIndex
 
-        # [-,L,-,-,T,-] start: L + 1, end: T + 1
-        #  0 1 2 3 4 5
         if targetIndex > latestIndex
-          startIndex = latestIndex + 1
-          migrations = @migrations.slice(startIndex, targetIndex + 1)
+          migrations = @getUpMigrations latestIndex, targetIndex
           return @runUpMigrations migrations, done
 
-        # [-,T,-,-,L,-] start: T+1, end: L
-        #  0 1 2 3 4 5
         if targetIndex < latestIndex
-          startIndex = targetIndex + 1
-          migrations = @migrations.slice(startIndex, latestIndex + 1).reverse()
+          migrations = @getDownMigrations latestIndex, targetIndex
           return @runDownMigrations migrations, done
 
     rollback: (done) ->
-      @storageAdapter.getLatestMigrationId (error, latestId) =>
-        return done() unless latestId?
-        latestMigration = @findMigrationById latestId
-        @runDownMigration latestMigration, done
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done() if latestIndex < 0
+        @runDownMigration @migrations[latestIndex], done
+
+    reset: (done) ->
+      @getLatestMigrationIndex (error, latestIndex) =>
+        return done(error) if error?
+        migrations = @getDownMigrations latestIndex
+        @runDownMigrations migrations, done
 
     runUpMigration: (migration, done) ->
       migration.up (error) =>

@@ -12,6 +12,7 @@ Migrate all your things (not just databases)!
 * [Usage]
   * [Migrating]
   * [Rolling Back]
+  * [Resetting]
   * [Irreversible Migrations]
 * [Storage Adapters]
   * [Available Adapters]
@@ -87,6 +88,20 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
+### Resetting
+
+`reset` rolls back all migrations.
+
+```coffee
+migrator.migrate null, (error) ->
+  throw error if error?
+
+  migrator.reset (error) ->
+    throw error if error?
+    expect(lastMigration).toEqual null
+    ok()
+```
+
 ### Irreversible Migrations
 
 A migration that has not defined a `down` method will raise an `IrreversibleMigration` error.
@@ -122,6 +137,7 @@ The `StorageAdapter` interface is currently in flux, and expected to be settled 
 [Usage]: #usage
 [Migrating]: #migrating
 [Rolling Back]: #rolling-back
+[Resetting]: #resetting
 [Irreversible Migrations]: #irreversible-migrations
 [Storage Adapters]: #storage-adapters
 [Available Adapters]: #available-adapters

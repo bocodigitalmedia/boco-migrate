@@ -172,36 +172,67 @@ configure = function($) {
       return index;
     };
 
-    Migrator.prototype.migrate = function(targetId, done) {
+    Migrator.prototype.getLatestMigrationIndex = function(done) {
       return this.storageAdapter.getLatestMigrationId((function(_this) {
         return function(error, latestId) {
-          var latestIndex, migrations, startIndex, targetIndex;
           if (error != null) {
             return done(error);
           }
-          if (latestId != null) {
-            latestIndex = _this.findMigrationIndexById(latestId);
+          if (latestId == null) {
+            return done(null, -1);
           }
-          if (targetId != null) {
-            targetIndex = _this.findMigrationIndexById(targetId);
-          }
-          if (latestIndex == null) {
-            latestIndex = -1;
-          }
-          if (targetIndex == null) {
-            targetIndex = _this.migrations.length - 1;
+          return done(null, _this.findMigrationIndexById(latestId));
+        };
+      })(this));
+    };
+
+    Migrator.prototype.getUpMigrations = function(latestIndex, targetIndex) {
+      var startIndex;
+      if (latestIndex == null) {
+        latestIndex = -1;
+      }
+      if (targetIndex == null) {
+        targetIndex = this.collection.length - 1;
+      }
+      startIndex = latestIndex + 1;
+      return this.migrations.slice(startIndex, targetIndex + 1);
+    };
+
+    Migrator.prototype.getDownMigrations = function(latestIndex, targetIndex) {
+      var startIndex;
+      if (latestIndex == null) {
+        latestIndex = -1;
+      }
+      if (targetIndex == null) {
+        targetIndex = -1;
+      }
+      startIndex = targetIndex + 1;
+      return this.migrations.slice(startIndex, latestIndex + 1).reverse();
+    };
+
+    Migrator.prototype.migrate = function(targetId, done) {
+      var targetIndex;
+      if (targetId != null) {
+        targetIndex = this.findMigrationIndexById(targetId);
+      }
+      if (targetIndex == null) {
+        targetIndex = this.migrations.length - 1;
+      }
+      return this.getLatestMigrationIndex((function(_this) {
+        return function(error, latestIndex) {
+          var migrations;
+          if (error != null) {
+            return done(error);
           }
           if (targetIndex === latestIndex) {
             return done();
           }
           if (targetIndex > latestIndex) {
-            startIndex = latestIndex + 1;
-            migrations = _this.migrations.slice(startIndex, targetIndex + 1);
+            migrations = _this.getUpMigrations(latestIndex, targetIndex);
             return _this.runUpMigrations(migrations, done);
           }
           if (targetIndex < latestIndex) {
-            startIndex = targetIndex + 1;
-            migrations = _this.migrations.slice(startIndex, latestIndex + 1).reverse();
+            migrations = _this.getDownMigrations(latestIndex, targetIndex);
             return _this.runDownMigrations(migrations, done);
           }
         };
@@ -209,14 +240,25 @@ configure = function($) {
     };
 
     Migrator.prototype.rollback = function(done) {
-      return this.storageAdapter.getLatestMigrationId((function(_this) {
-        return function(error, latestId) {
-          var latestMigration;
-          if (latestId == null) {
+      return this.getLatestMigrationIndex((function(_this) {
+        return function(error, latestIndex) {
+          if (latestIndex < 0) {
             return done();
           }
-          latestMigration = _this.findMigrationById(latestId);
-          return _this.runDownMigration(latestMigration, done);
+          return _this.runDownMigration(_this.migrations[latestIndex], done);
+        };
+      })(this));
+    };
+
+    Migrator.prototype.reset = function(done) {
+      return this.getLatestMigrationIndex((function(_this) {
+        return function(error, latestIndex) {
+          var migrations;
+          if (error != null) {
+            return done(error);
+          }
+          migrations = _this.getDownMigrations(latestIndex);
+          return _this.runDownMigrations(migrations, done);
         };
       })(this));
     };

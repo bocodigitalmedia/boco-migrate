@@ -54,6 +54,17 @@ describe "boco-migrate", ->
             expect(lastMigration).toEqual "migration2"
             ok()
 
+    describe "Resetting", ->
+
+      it "`reset` rolls back all migrations.", (ok) ->
+        migrator.migrate null, (error) ->
+          throw error if error?
+        
+          migrator.reset (error) ->
+            throw error if error?
+            expect(lastMigration).toEqual null
+            ok()
+
     describe "Irreversible Migrations", ->
 
       beforeEach ->

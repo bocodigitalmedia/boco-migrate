@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "description": "Abstract migration for Javascript",
   "main": "index.js",
-  "bin": "cli.js",
+  "bin": "bin/boco-migrate",
   "scripts": {
     "test": "./bin/shake npm_test",
     "preversion": "./bin/shake npm_preversion",

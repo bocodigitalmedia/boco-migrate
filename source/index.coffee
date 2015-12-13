@@ -1,6 +1,9 @@
 configure = ($ = {}) ->
   $async = $.async ? require "async"
   $lodash = $.lodash ? require "lodash"
+  $minimist = $.minimist ? require "minimist"
+  $process = $.process ? process
+  $path = $.path ? require "path"
 
   class MigrateError extends Error
     constructor: (props) ->
@@ -117,6 +120,109 @@ configure = ($ = {}) ->
     runDownMigrations: (migrations, done) ->
       $async.eachSeries migrations, @runDownMigration.bind(@), done
 
+  class CLI
+
+    getHelp: ->
+      cmd = $path.basename $process.argv[1]
+      """
+      Usage: #{cmd} <options...> <command>
+
+      options:
+        --help                      show this help screen
+        --factory=factory_path.js   path to your migrator factory
+
+      commands:
+        migrate <target_migration_id>
+          Migrate to the (optional) target migration id
+        rollback
+          Roll back the previous migration
+        example
+          Print an example factory.js
+
+      factory:
+        A javascript file that exports a single async factory method,
+        returning a migrator instance for the CLI.
+      """
+
+    showHelp: (code = 0) ->
+      $process.stdout.write @getHelp() + "\n"
+      $process.exit code
+
+    getExample: ->
+      """
+      // example factory.js
+      module.exports = function(done) {
+        require("my-database-lib").connect(function(error, connection) {
+          if(error != null) { return done(error); }
+
+          var BocoMigrate = require("boco-migrate");
+          var MyStorageAdapter = require("my-database-storage-adapter");
+
+          var storageAdapter = new MyStorageAdapter({
+            connection: connection
+          });
+
+          var migrator = new BocoMigrate.Migrator({
+            storageAdapter: storageAdapter
+          });
+
+          var migrations = require("./migrations").configure({
+            connection: connection
+          });
+
+          migrator.addMigrations(migrations);
+          return done(null, migrator);
+        });
+      };
+      """
+
+    example: ->
+      $process.stdout.write @getExample() + "\n"
+
+    getMigrator: (factoryPath, done) ->
+      throw TypeError("missing argument: --factory") unless factoryPath?
+      path = $path.resolve $process.cwd(), factoryPath
+      path = "./#{path}" unless /^[\\\/]/.test(path)
+      require(path)(done)
+
+    migrate: (factoryPath, targetId) ->
+      @getMigrator factoryPath, (error, migrator) ->
+        throw error if error?
+
+        migrator.migrate targetId, (error) ->
+          throw error if error?
+          process.exit()
+
+    rollback: (factoryPath) ->
+      @getMigrator factoryPath, (error, migrator) ->
+        throw error if error?
+        migrator.rollback (error) ->
+          throw error if error?
+          process.exit()
+
+    getParams: ->
+      argv = $process.argv.slice(2)
+
+      minimist = $minimist argv,
+        boolean: ["example", "help"]
+        string: ["factory"]
+
+      params =
+        help: minimist.help
+        example: minimist.example
+        command: minimist._[0]
+        factory: minimist.factory
+        args: minimist._.slice(1)
+
+    run: ->
+      params = @getParams()
+      return @showHelp() if params.help
+      switch params.command
+        when "migrate" then @migrate params.factory, params.args...
+        when "rollback" then @rollback params.factory, params.args...
+        when "example" then @example params.args...
+        else @showHelp 1
+
   BocoMigrate =
     MigrateError: MigrateError
     IrreversibleMigration: IrreversibleMigration
@@ -126,5 +232,6 @@ configure = ($ = {}) ->
     Migration: Migration
     StorageAdapter: StorageAdapter
     Migrator: Migrator
+    CLI: CLI
 
 module.exports = configure()

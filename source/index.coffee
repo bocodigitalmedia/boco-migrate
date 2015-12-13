@@ -1,9 +1,10 @@
 configure = ($ = {}) ->
+  $process = $.process ? process
   $async = $.async ? require "async"
   $lodash = $.lodash ? require "lodash"
   $minimist = $.minimist ? require "minimist"
-  $process = $.process ? process
   $path = $.path ? require "path"
+  $fs = $.fs ? require "fs"
 
   class MigrateError extends Error
     constructor: (props) ->
@@ -38,25 +39,68 @@ configure = ($ = {}) ->
       done new IrreversibleMigration
 
   class StorageAdapter
-    latestMigrationId: null
+    constructor: (props = {}) ->
+      @data = props.data ? {}
+
+    setLatestMigrationId: (id, done) ->
+      done null, (@data.latestMigrationId = id)
+
+    getLatestMigrationId: (done) ->
+      done null, @data.latestMigrationId
+
+  class FileStorageAdapter extends StorageAdapter
+    path: null
 
     constructor: (props) ->
       @[key] = val for own key, val of props
 
     setLatestMigrationId: (id, done) ->
-      done null, (@latestMigrationId = id)
+      json = JSON.stringify latestMigrationId: id
+      $fs.writeFile @path, json, (error) ->
+        return done null, id
 
     getLatestMigrationId: (done) ->
-      done null, @latestMigrationId
+      $fs.readFile @path, "utf8", (error, json) =>
+        return @setLatestMigrationId(null, done) if error?.code is "ENOENT"
+        return done error if error?
+
+        try
+          done null, JSON.parse(json).latestMigrationId
+        catch error
+          done error
+
+  class RedisStorageAdapter extends StorageAdapter
+    redisClient: null
+    keyPrefix: null
+    keyJoinString: null
+
+    constructor: (props) ->
+      @[key] = val for own key, val of props
+      @keyPrefix ?= "migrator"
+      @keyJoinString ?= ":"
+
+    getKeyName: (propName) ->
+      [@keyPrefix, propName].join @keyJoinString
+
+    setLatestMigrationId: (id, done) ->
+      keyName = @getKeyName "latest_migration_id"
+      @redisClient.set keyName, id, done
+
+    getLatestMigrationId: (done) ->
+      keyName = @getKeyName "latest_migration_id"
+      @redisClient.get keyName, done
 
   class Migrator
     migrations: null
     storageAdapter: null
 
     constructor: (props) ->
-      @[key] = val for own key, val of props
+      @[key] = val for own key, val of props when key isnt "storageAdapter"
       @migrations ?= []
-      @storageAdapter ?= new StorageAdapter
+      @setStorageAdapter props.storageAdapter
+
+    setStorageAdapter: (storageAdapter) ->
+      @storageAdapter = storageAdapter ? new StorageAdapter
 
     addMigration: (migration) ->
       migration = new Migration(migration) unless migration instanceof Migration
@@ -277,6 +321,8 @@ configure = ($ = {}) ->
 
     Migration: Migration
     StorageAdapter: StorageAdapter
+    FileStorageAdapter: FileStorageAdapter
+    RedisStorageAdapter: RedisStorageAdapter
     Migrator: Migrator
     CLI: CLI
 

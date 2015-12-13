@@ -78,3 +78,38 @@ describe "boco-migrate", ->
           migrator.rollback (error) ->
             expect(error.constructor).toEqual BocoMigrate.IrreversibleMigration
             ok()
+
+    describe "Storage Adapters", ->
+
+      describe "FileStorageAdapter", ->
+
+        it "The `FileStorageAdapter` writes data to the JSON file specified by the `path` provided.", (ok) ->
+          adapter = new BocoMigrate.FileStorageAdapter
+            path: "migratorStorage.json"
+          
+          migrator.setStorageAdapter adapter
+          
+          migrator.migrate null, (error) ->
+            throw error if error?
+            adapter.getLatestMigrationId (error, id) ->
+              throw error if error?
+              expect(id).toEqual "migration3"
+              ok()
+
+      describe "RedisStorageAdapter", ->
+
+        it "The `RedisStorageAdapter` writes data to a `redis` instance.", (ok) ->
+          redisClient = require("redis").createClient()
+          adapter = new BocoMigrate.RedisStorageAdapter
+            redisClient: redisClient
+            keyPrefix: "migrator"
+            keyJoinString: "_"
+          
+          migrator.setStorageAdapter adapter
+          
+          migrator.migrate null, (error) ->
+            throw error if error?
+            adapter.getLatestMigrationId (error, id) ->
+              throw error if error?
+              expect(id).toEqual "migration3"
+              ok()

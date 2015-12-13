@@ -14,9 +14,8 @@ Migrate all your things (not just databases)!
   * [Rolling Back]
   * [Resetting]
   * [Irreversible Migrations]
-* [Storage Adapters]
-  * [Available Adapters]
-  * [Write an Adapter]
+  * [Storage Adapters]
+  * [Using the CLI]
 
 ## Installation
 
@@ -122,7 +121,52 @@ migrator.migrate null, (error) ->
     ok()
 ```
 
-## Using the CLI
+### Storage Adapters
+
+In order for the migrator to persist its state, you must provide it with an adapter for the storage mechanism of your choice.
+
+The default `StorageAdapter` is non-persistent, and thus is primarily used only for testing or as the parent class for other adapters.
+
+#### FileStorageAdapter
+
+The `FileStorageAdapter` writes data to the JSON file specified by the `path` provided.
+
+```coffee
+adapter = new BocoMigrate.FileStorageAdapter
+  path: "migratorStorage.json"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+#### RedisStorageAdapter
+
+The `RedisStorageAdapter` writes data to a `redis` instance.
+
+```coffee
+redisClient = require("redis").createClient()
+adapter = new BocoMigrate.RedisStorageAdapter
+  redisClient: redisClient
+  keyPrefix: "migrator"
+  keyJoinString: "_"
+
+migrator.setStorageAdapter adapter
+
+migrator.migrate null, (error) ->
+  throw error if error?
+  adapter.getLatestMigrationId (error, id) ->
+    throw error if error?
+    expect(id).toEqual "migration3"
+    ok()
+```
+
+### Using the CLI
 
 A CLI is provided with this package to allow you to run your migrations from the command line.
 
@@ -150,7 +194,7 @@ factory:
   returning a migrator instance for the CLI.
 ```
 
-### Creating a Migrator Factory
+#### Creating a Migrator Factory
 
 Your migrator factory file must export a single async function, and returns a `Migrator` instance. This allows you to connect to databases and perform other asynchronous tasks to initialize both the migrator as well as your migrations.
 
@@ -176,17 +220,6 @@ module.exports = function(done) {
 };
 ```
 
-## Storage Adapters
-
-In order for the migrator to persist its state, you must provide it with a storage adapter for the storage mechanism of your choice.
-
-The default `StorageAdapter` is non-persistent, and primarily used for testing or as a parent class for extended adapters.
-
-### Available Adapters
-
-The `StorageAdapter` interface is currently in flux, and expected to be settled shortly in __v2.0__. Once the interface has been locked down, I will release a few options and list them here.
-
-
 [Installation]: #installation
 [Usage]: #usage
 [Migrating]: #migrating
@@ -194,8 +227,7 @@ The `StorageAdapter` interface is currently in flux, and expected to be settled 
 [Resetting]: #resetting
 [Irreversible Migrations]: #irreversible-migrations
 [Storage Adapters]: #storage-adapters
-[Available Adapters]: #available-adapters
-[Write an Adapter]: #write-an-adapter
+[Using the CLI]: #using-the-cli
 
 [npm]: http://npmjs.org
 [github]: http://www.github.com

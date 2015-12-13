@@ -1,6 +1,6 @@
 {
   "name": "boco-migrate",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Migrate all your things (not just databases)!",
   "main": "index.js",
   "bin": "bin/boco-migrate",

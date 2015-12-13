@@ -26,6 +26,7 @@ configure = ($ = {}) ->
 
   class Migration
     id: null
+    name: null
 
     constructor: (props) ->
       @[key] = val for own key, val of props
@@ -141,18 +142,20 @@ configure = ($ = {}) ->
       Usage: #{cmd} <options...> <command>
 
       options:
-        --help                      show this help screen
-        --factory=factory_path.js   path to your migrator factory
+        -h, --help                   show this help screen
+        -e, --example                show an example migrator factory
+        -f, --factory=factory_path   path to the migrator factory
+                                     defaults to "migrator.js"
 
       commands:
-        migrate <target_migration_id>
+        migrate
           Migrate to the (optional) target migration id
         rollback
           Roll back the latest migration
         reset
           Roll back all migrations
-        example
-          Print an example factory.js
+        info
+          Show migration information
 
       factory:
         A javascript file that exports a single async factory method,
@@ -195,25 +198,39 @@ configure = ($ = {}) ->
       $process.stdout.write @getExample() + "\n"
 
     getMigrator: (factoryPath, done) ->
-      throw TypeError("missing argument: --factory") unless factoryPath?
       path = $path.resolve $process.cwd(), factoryPath
       path = "./#{path}" unless /^[\\\/]/.test(path)
       require(path)(done)
 
-    migrate: (factoryPath, targetId, done) ->
-      @getMigrator factoryPath, (error, migrator) ->
-        throw error if error?
-        migrator.migrate targetId, done
+    migrate: (migrator, targetId, done) ->
+      migrator.migrate targetId, done
 
-    rollback: (factoryPath, done) ->
-      @getMigrator factoryPath, (error, migrator) ->
-        throw error if error?
-        migrator.rollback done
+    rollback: (migrator, done) ->
+      migrator.rollback done
 
-    reset: (factoryPath, done) ->
-      @getMigrator factoryPath, (error, migrator) ->
-        throw error if error?
-        migrator.reset done
+    reset: (migrator, done) ->
+      migrator.reset done
+
+    info: (migrator, done) ->
+      migrator.getLatestMigrationIndex (error, latestIndex) ->
+        return done error if error?
+        migrations = migrator.migrations
+        pendingCount = migrations.length - 1 - latestIndex
+
+        $process.stdout.write "key: [ - previous | > latest | + pending ]\n\n"
+
+        migrations.forEach (migration, index) ->
+          {id, name = ''} = migration
+
+          if index < latestIndex then key = "-"
+          if index is latestIndex then key = ">"
+          if index > latestIndex then key = "+"
+
+          line = [key, id, name].join(" ")
+          $process.stdout.write line + "\n"
+
+        $process.stdout.write "\nYou have #{pendingCount} pending migrations\n"
+        done()
 
     getParams: ->
       argv = $process.argv.slice(2)
@@ -221,6 +238,12 @@ configure = ($ = {}) ->
       minimist = $minimist argv,
         boolean: ["example", "help"]
         string: ["factory"]
+        default:
+          factory: "migrator.js"
+        alias:
+          help: "h"
+          factory: "f"
+          example: "e"
 
       params =
         help: minimist.help
@@ -229,24 +252,27 @@ configure = ($ = {}) ->
         factory: minimist.factory
         args: minimist._.slice(1)
 
-    handleError: (error) ->
-      throw error
-
     run: ->
       params = @getParams()
-      {help, command, factory, args} = params
+      {help, example, command, factory, args} = params
       return @showHelp() if help
+      return @showExample() if example
 
-      done = (error) =>
-        return @handleError(error) if error?
+      done = (error) ->
+        throw error if error?
         $process.exit()
 
-      switch command
-        when "migrate" then @migrate factory, args..., done
-        when "rollback" then @rollback factory, args..., done
-        when "reset" then @reset factory, args..., done
-        when "example" then @example args..., done
-        else @showHelp 1
+      return done "missing option: --factory" unless factory?
+
+      @getMigrator factory, (error, migrator) =>
+        return done(error) if error?
+
+        switch command
+          when "migrate" then @migrate migrator, args[0], done
+          when "rollback" then @rollback migrator, done
+          when "reset" then @reset migrator, done
+          when "info" then @info migrator, done
+          else @showHelp 1
 
   BocoMigrate =
     MigrateError: MigrateError

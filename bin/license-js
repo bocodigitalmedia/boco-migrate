@@ -1,0 +1,31 @@
+#!/usr/bin/env coffee
+File = require "fs"
+Path = require "path"
+
+addLicense = (license, file) ->
+  path = require("path").resolve(process.cwd(), file);
+  data = require("fs").readFileSync(path).toString();
+  require("fs").writeFileSync(path, license + "\n" + data);
+
+getLicense = (file) ->
+  path = Path.resolve process.cwd(), file
+  data = File.readFileSync(path).toString()
+  data.replace(/^/gm, "// ") + "\n"
+
+showHelp = ->
+  cmd = Path.basename process.argv[1]
+  process.stdout.write """
+  Usage: #{cmd} <license> <files...>
+  Add a commented LICENSE to javascript files
+
+  """
+
+main = ->
+  license_file = process.argv[2]
+  files = process.argv.slice 3
+  return showHelp() unless license_file? and files.length
+  license = getLicense license_file
+  addLicense license, file for file in files
+
+exports.run = main
+main() unless module.parent?

@@ -1,0 +1,23 @@
+#!/usr/bin/env coffee
+File = require "fs"
+Path = require "path"
+
+showHelp = ->
+  cmd = Path.basename process.argv[1]
+  console.log """
+  Usage: #{cmd} <version> files...
+  """
+
+bumpFile = (version, file) ->
+  path = Path.resolve process.cwd(), file
+  data = JSON.parse File.readFileSync(path)
+  data.version = version
+  File.writeFileSync path, JSON.stringify(data, null, 2) + "\n"
+
+exports.main = ->
+  version = process.argv[2]
+  files = process.argv.slice 3
+  return showHelp() unless version? and files.length
+  bumpFile version, file for file in files
+
+exports.main() unless module.parent?

@@ -1,191 +1,130 @@
-configure = (dependencies) ->
+configure = ($ = {}) ->
+  $async = $.async ? require "async"
+  $lodash = $.lodash ? require "lodash"
 
-  $assign = (target, source) ->
-    target[key] = val for own key,val of source
-
-  $getTimestampDate = (timestamp) ->
-    return null unless timestamp?
-    return new Date timestamp
-
-  $asyncSeries = (series, done) ->
-    require("async").series series, done
-
-  $asyncEachSeries = (series, fn, done) ->
-    require("async").eachSeries series, fn, done
-
-  class BocoMigrateError extends Error
+  class MigrateError extends Error
     constructor: (props) ->
-      $assign this, props
+      @[key] = val for own key, val of props
       Error.captureStackTrace @, @constructor
       @name ?= @constructor.name
-      @message ?= @getDefaultMessage()
 
-  class IrreversibleMigration extends BocoMigrateError
-    migration: null
-    getDefaultMessage: -> "Migration '#{@migration.name}' is irreversible."
+  class IdentityNotUnique extends MigrateError
+    message: "Identity not unique"
 
-  class NotImplemented extends BocoMigrateError
-    getDefaultMessage: -> "Not implemented"
+  class MigrationNotFound extends MigrateError
+    message: "Migration not found"
+
+  class IrreversibleMigration extends MigrateError
+    message: "Irreversible Migration"
+
+  class NotImplemented extends MigrateError
+    message: "Not implemented"
 
   class Migration
-    name: null
-    timestamp: null
+    id: null
 
     constructor: (props) ->
-      $assign this, props
+      @[key] = val for own key, val of props
 
     up: (done) ->
-      done new NotImplemented()
+      done new NotImplemented
 
     down: (done) ->
-      done new IrreversibleMigration(migration: this)
+      done new IrreversibleMigration
 
-    getDate: ->
-      new Date @timestamp
-
-  class State
-    lastMigrationName: null
-    lastMigrationTimestamp: null
-
-    @fromLastMigration: (migration) ->
-      state = new State
-        lastMigrationName: migration.name
-        lastMigrationTimestamp: migration.timestamp
+  class StorageAdapter
+    latestMigrationId: null
 
     constructor: (props) ->
-      $assign this, props
+      @[key] = val for own key, val of props
 
-  class MemoryStateStore
-    stateObject: null
+    setLatestMigrationId: (id, done) ->
+      done null, (@latestMigrationId = id)
 
-    constructor: (props) ->
-      $assign this, props
-      @stateObject ?= {}
-
-    save: (state, done) ->
-      @stateObject.lastMigrationName = state.lastMigrationName
-      @stateObject.lastMigrationTimestamp = state.lastMigrationTimestamp
-      done()
-
-    fetch: (done) ->
-      done null, new State(@stateObject)
-
-  class Migrations
-    collection: null
-
-    constructor: (props) ->
-      $assign this, props
-      @collection = if @collection? then @collection.slice() else []
-
-    add: (migration) ->
-      @collection.push migration
-
-    getMigrationBefore: (migration) ->
-      migrationIndex = @collection.indexOf(migration)
-      @collection[migrationIndex - 1]
-
-    sortByDateAscending: ->
-      collection = @collection.sort (a, b) -> a.getDate() - b.getDate()
-      new Migrations collection: collection
-
-    sortByDateDescending: ->
-      collection = @collection.sort (a, b) -> b.getDate() - a.getDate()
-      new Migrations collection: collection
-
-    afterTimestamp: (timestamp) ->
-      date = $getTimestampDate timestamp
-      return this unless date?
-
-      collection = @collection.filter (migration) ->
-        migration.getDate() > date
-
-      new Migrations collection: collection
-
-    beforeIncludingTimestamp: (timestamp) ->
-      date = $getTimestampDate timestamp
-      return this unless date?
-
-      collection = @collection.filter (migration) ->
-        migration.getDate() <= date
-
-      new Migrations collection: collection
-
-    forMigratingUp: (fromTimestamp, toTimestamp) ->
-      this
-        .afterTimestamp(fromTimestamp)
-        .beforeIncludingTimestamp(toTimestamp)
-        .sortByDateAscending()
-
-    forMigratingDown: (fromTimestamp, toTimestamp) ->
-      this
-        .beforeIncludingTimestamp(fromTimestamp)
-        .afterTimestamp(toTimestamp)
-        .sortByDateDescending()
-
-    toArray: ->
-      @collection.slice()
+    getLatestMigrationId: (done) ->
+      done null, @latestMigrationId
 
   class Migrator
     migrations: null
-    stateStore: null
+    storageAdapter: null
 
     constructor: (props) ->
-      $assign this, props
-      @migrations ?= new Migrations()
-      @stateStore ?= new MemoryStateStore()
+      @[key] = val for own key, val of props
+      @migrations ?= []
+      @storageAdapter ?= new StorageAdapter
 
     addMigration: (migration) ->
-      @migrations.add migration
+      migration = new Migration(migration) unless migration instanceof Migration
+      @migrations.push migration
+      migration
 
-    addMigrations: (args...) ->
-      @addMigration migration for migration in args
+    findMigrationById: (id) ->
+      index = @findMigrationIndexById(id)
+      @migrations[index]
+
+    findMigrationIndexById: (id) ->
+      index = $lodash.findIndex @migrations, (migration) -> migration.id is id
+      throw new MigrationNotFound unless index? and index > -1
+      return index
+
+    migrate: (targetId, done) ->
+      @storageAdapter.getLatestMigrationId (error, latestId) =>
+        return done(error) if error?
+
+        latestIndex = @findMigrationIndexById(latestId) if latestId?
+        targetIndex = @findMigrationIndexById(targetId) if targetId?
+        latestIndex ?= -1
+        targetIndex ?= @migrations.length - 1
+
+        return done() if targetIndex is latestIndex
+
+        # [-,L,-,-,T,-] start: L + 1, end: T + 1
+        #  0 1 2 3 4 5
+        if targetIndex > latestIndex
+          startIndex = latestIndex + 1
+          migrations = @migrations.slice(startIndex, targetIndex + 1)
+          return @runUpMigrations migrations, done
+
+        # [-,T,-,-,L,-] start: T+1, end: L
+        #  0 1 2 3 4 5
+        if targetIndex < latestIndex
+          startIndex = targetIndex + 1
+          migrations = @migrations.slice(startIndex, latestIndex + 1).reverse()
+          return @runDownMigrations migrations, done
+
+    rollback: (done) ->
+      @storageAdapter.getLatestMigrationId (error, latestId) =>
+        return done() unless latestId?
+        latestMigration = @findMigrationById latestId
+        @runDownMigration latestMigration, done
 
     runUpMigration: (migration, done) ->
       migration.up (error) =>
         return done error if error?
-        state = State.fromLastMigration migration
-        @stateStore.save state, done
+        @storageAdapter.setLatestMigrationId migration.id, done
+
+    runUpMigrations: (migrations, done) ->
+      $async.eachSeries migrations, @runUpMigration.bind(@), done
 
     runDownMigration: (migration, done) ->
       migration.down (error) =>
         return done error if error?
-        previousMigration = @migrations
-          .sortByDateAscending()
-          .getMigrationBefore(migration)
-        state = State.fromLastMigration previousMigration
-        @stateStore.save state, done
 
-    runDownMigrations: (fromTimestamp, toTimestamp, done) ->
-      migrationsToRun = @migrations.forMigratingDown fromTimestamp, toTimestamp
-      $asyncEachSeries migrationsToRun.toArray(), @runDownMigration.bind(this), done
+        index = @findMigrationIndexById migration.id
+        latestMigration = @migrations[index - 1]
+        @storageAdapter.setLatestMigrationId latestMigration?.id, done
 
-    runUpMigrations: (fromTimestamp, toTimestamp, done) ->
-      migrationsToRun = @migrations.forMigratingUp fromTimestamp, toTimestamp
-      $asyncEachSeries migrationsToRun.toArray(), @runUpMigration.bind(this), done
-
-    migrate: (args..., done) ->
-      @stateStore.fetch (error, state) =>
-        return done error if error?
-
-        targetTimestamp = args[0]
-        targetDate = $getTimestampDate targetTimestamp
-
-        currentTimestamp = state.lastMigrationTimestamp
-        currentDate = $getTimestampDate currentTimestamp
-
-        isDownMigration = targetDate? and currentDate? and targetDate < currentDate
-
-        return @runDownMigrations currentTimestamp, targetTimestamp, done if isDownMigration
-        return @runUpMigrations currentTimestamp, targetTimestamp, done
+    runDownMigrations: (migrations, done) ->
+      $async.eachSeries migrations, @runDownMigration.bind(@), done
 
   BocoMigrate =
-    BocoMigrateError: BocoMigrateError
+    MigrateError: MigrateError
     IrreversibleMigration: IrreversibleMigration
     NotImplemented: NotImplemented
+    MigrationNotFound: MigrationNotFound
+
     Migration: Migration
-    State: State
-    MemoryStateStore: MemoryStateStore
-    Migrations: Migrations
+    StorageAdapter: StorageAdapter
     Migrator: Migrator
 
 module.exports = configure()

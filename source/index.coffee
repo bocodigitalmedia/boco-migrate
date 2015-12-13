@@ -7,9 +7,10 @@ configure = ($ = {}) ->
 
   class MigrateError extends Error
     constructor: (props) ->
+      super()
       @[key] = val for own key, val of props
       Error.captureStackTrace @, @constructor
-      @name ?= @constructor.name
+      @name = @constructor.name
 
   class IdentityNotUnique extends MigrateError
     message: "Identity not unique"
@@ -147,7 +148,9 @@ configure = ($ = {}) ->
         migrate <target_migration_id>
           Migrate to the (optional) target migration id
         rollback
-          Roll back the previous migration
+          Roll back the latest migration
+        reset
+          Roll back all migrations
         example
           Print an example factory.js
 
@@ -197,20 +200,20 @@ configure = ($ = {}) ->
       path = "./#{path}" unless /^[\\\/]/.test(path)
       require(path)(done)
 
-    migrate: (factoryPath, targetId) ->
+    migrate: (factoryPath, targetId, done) ->
       @getMigrator factoryPath, (error, migrator) ->
         throw error if error?
+        migrator.migrate targetId, done
 
-        migrator.migrate targetId, (error) ->
-          throw error if error?
-          process.exit()
-
-    rollback: (factoryPath) ->
+    rollback: (factoryPath, done) ->
       @getMigrator factoryPath, (error, migrator) ->
         throw error if error?
-        migrator.rollback (error) ->
-          throw error if error?
-          process.exit()
+        migrator.rollback done
+
+    reset: (factoryPath, done) ->
+      @getMigrator factoryPath, (error, migrator) ->
+        throw error if error?
+        migrator.reset done
 
     getParams: ->
       argv = $process.argv.slice(2)
@@ -226,13 +229,23 @@ configure = ($ = {}) ->
         factory: minimist.factory
         args: minimist._.slice(1)
 
+    handleError: (error) ->
+      throw error
+
     run: ->
       params = @getParams()
-      return @showHelp() if params.help
-      switch params.command
-        when "migrate" then @migrate params.factory, params.args...
-        when "rollback" then @rollback params.factory, params.args...
-        when "example" then @example params.args...
+      {help, command, factory, args} = params
+      return @showHelp() if help
+
+      done = (error) =>
+        return @handleError(error) if error?
+        $process.exit()
+
+      switch command
+        when "migrate" then @migrate factory, args..., done
+        when "rollback" then @rollback factory, args..., done
+        when "reset" then @reset factory, args..., done
+        when "example" then @example args..., done
         else @showHelp 1
 
   BocoMigrate =

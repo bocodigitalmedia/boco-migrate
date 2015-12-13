@@ -19,15 +19,14 @@ configure = function($) {
 
     function MigrateError(props) {
       var key, val;
+      MigrateError.__super__.constructor.call(this);
       for (key in props) {
         if (!hasProp.call(props, key)) continue;
         val = props[key];
         this[key] = val;
       }
       Error.captureStackTrace(this, this.constructor);
-      if (this.name == null) {
-        this.name = this.constructor.name;
-      }
+      this.name = this.constructor.name;
     }
 
     return MigrateError;
@@ -305,7 +304,7 @@ configure = function($) {
     CLI.prototype.getHelp = function() {
       var cmd;
       cmd = $path.basename($process.argv[1]);
-      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  --help                      show this help screen\n  --factory=factory_path.js   path to your migrator factory\n\ncommands:\n  migrate <target_migration_id>\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the previous migration\n  example\n    Print an example factory.js\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
+      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  --help                      show this help screen\n  --factory=factory_path.js   path to your migrator factory\n\ncommands:\n  migrate <target_migration_id>\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the latest migration\n  reset\n    Roll back all migrations\n  example\n    Print an example factory.js\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
     };
 
     CLI.prototype.showHelp = function(code) {
@@ -336,31 +335,30 @@ configure = function($) {
       return require(path)(done);
     };
 
-    CLI.prototype.migrate = function(factoryPath, targetId) {
+    CLI.prototype.migrate = function(factoryPath, targetId, done) {
       return this.getMigrator(factoryPath, function(error, migrator) {
         if (error != null) {
           throw error;
         }
-        return migrator.migrate(targetId, function(error) {
-          if (error != null) {
-            throw error;
-          }
-          return process.exit();
-        });
+        return migrator.migrate(targetId, done);
       });
     };
 
-    CLI.prototype.rollback = function(factoryPath) {
+    CLI.prototype.rollback = function(factoryPath, done) {
       return this.getMigrator(factoryPath, function(error, migrator) {
         if (error != null) {
           throw error;
         }
-        return migrator.rollback(function(error) {
-          if (error != null) {
-            throw error;
-          }
-          return process.exit();
-        });
+        return migrator.rollback(done);
+      });
+    };
+
+    CLI.prototype.reset = function(factoryPath, done) {
+      return this.getMigrator(factoryPath, function(error, migrator) {
+        if (error != null) {
+          throw error;
+        }
+        return migrator.reset(done);
       });
     };
 
@@ -380,19 +378,34 @@ configure = function($) {
       };
     };
 
+    CLI.prototype.handleError = function(error) {
+      throw error;
+    };
+
     CLI.prototype.run = function() {
-      var params;
+      var args, command, done, factory, help, params;
       params = this.getParams();
-      if (params.help) {
+      help = params.help, command = params.command, factory = params.factory, args = params.args;
+      if (help) {
         return this.showHelp();
       }
-      switch (params.command) {
+      done = (function(_this) {
+        return function(error) {
+          if (error != null) {
+            return _this.handleError(error);
+          }
+          return $process.exit();
+        };
+      })(this);
+      switch (command) {
         case "migrate":
-          return this.migrate.apply(this, [params.factory].concat(slice.call(params.args)));
+          return this.migrate.apply(this, [factory].concat(slice.call(args), [done]));
         case "rollback":
-          return this.rollback.apply(this, [params.factory].concat(slice.call(params.args)));
+          return this.rollback.apply(this, [factory].concat(slice.call(args), [done]));
+        case "reset":
+          return this.reset.apply(this, [factory].concat(slice.call(args), [done]));
         case "example":
-          return this.example.apply(this, params.args);
+          return this.example.apply(this, slice.call(args).concat([done]));
         default:
           return this.showHelp(1);
       }

@@ -1,7 +1,7 @@
 {
   "name": "boco-migrate",
   "version": "0.2.0",
-  "description": "Abstract migration for Javascript",
+  "description": "Migrate all your things (not just databases)!",
   "main": "index.js",
   "bin": "bin/boco-migrate",
   "scripts": {
@@ -20,7 +20,21 @@
     "migration",
     "migrating",
     "migrator",
-    "database"
+    "database",
+    "anything",
+    "amqp",
+    "rabbitmq",
+    "mongodb",
+    "mongo",
+    "sqlite",
+    "sqlite3",
+    "mysql",
+    "postgres",
+    "postgresql",
+    "pg",
+    "abstract",
+    "agnostic",
+    "inject"
   ],
   "author": "Christian Bradley <christian.bradley@bocodigital.com> (https://github.com/christianbradley)",
   "license": "MIT",

@@ -149,6 +149,15 @@ configure = function($) {
       });
     };
 
+    FileStorageAdapter.prototype.reset = function(done) {
+      return $fs.unlink(this.path, function(error) {
+        if ((error != null) && error.code !== "ENOENT") {
+          return done(error);
+        }
+        return done();
+      });
+    };
+
     FileStorageAdapter.prototype.getLatestMigrationId = function(done) {
       return $fs.readFile(this.path, "utf8", (function(_this) {
         return function(error, json) {
@@ -197,19 +206,45 @@ configure = function($) {
     }
 
     RedisStorageAdapter.prototype.getKeyName = function(propName) {
+      if (propName == null) {
+        propName = "latest_migration_id";
+      }
       return [this.keyPrefix, propName].join(this.keyJoinString);
     };
 
-    RedisStorageAdapter.prototype.setLatestMigrationId = function(id, done) {
+    RedisStorageAdapter.prototype.reset = function(done) {
       var keyName;
-      keyName = this.getKeyName("latest_migration_id");
-      return this.redisClient.set(keyName, id, done);
+      keyName = this.getKeyName();
+      return this.redisClient.del(keyName, done);
+    };
+
+    RedisStorageAdapter.prototype.setLatestMigrationId = function(id, done) {
+      var json, keyName;
+      if (id == null) {
+        id = null;
+      }
+      keyName = this.getKeyName();
+      json = JSON.stringify(id);
+      return this.redisClient.set(keyName, json, function(error) {
+        return done(error, id);
+      });
     };
 
     RedisStorageAdapter.prototype.getLatestMigrationId = function(done) {
       var keyName;
-      keyName = this.getKeyName("latest_migration_id");
-      return this.redisClient.get(keyName, done);
+      keyName = this.getKeyName();
+      return this.redisClient.get(keyName, function(error, json) {
+        var error1;
+        try {
+          if (error != null) {
+            throw error;
+          }
+          return done(null, JSON.parse(json));
+        } catch (error1) {
+          error = error1;
+          return done(error);
+        }
+      });
     };
 
     return RedisStorageAdapter;

@@ -59,6 +59,11 @@ configure = ($ = {}) ->
       $fs.writeFile @path, json, (error) ->
         return done null, id
 
+    reset: (done) ->
+      $fs.unlink @path, (error) ->
+        return done error if error? and error.code isnt "ENOENT"
+        done()
+
     getLatestMigrationId: (done) ->
       $fs.readFile @path, "utf8", (error, json) =>
         return @setLatestMigrationId(null, done) if error?.code is "ENOENT"
@@ -79,16 +84,27 @@ configure = ($ = {}) ->
       @keyPrefix ?= "migrator"
       @keyJoinString ?= ":"
 
-    getKeyName: (propName) ->
+    getKeyName: (propName = "latest_migration_id") ->
       [@keyPrefix, propName].join @keyJoinString
 
-    setLatestMigrationId: (id, done) ->
-      keyName = @getKeyName "latest_migration_id"
-      @redisClient.set keyName, id, done
+    reset: (done) ->
+      keyName = @getKeyName()
+      @redisClient.del keyName, done
+
+    setLatestMigrationId: (id = null, done) ->
+      keyName = @getKeyName()
+      json = JSON.stringify id
+      @redisClient.set keyName, json, (error) ->
+        return done error, id
 
     getLatestMigrationId: (done) ->
-      keyName = @getKeyName "latest_migration_id"
-      @redisClient.get keyName, done
+      keyName = @getKeyName()
+      @redisClient.get keyName, (error, json) ->
+        try
+          throw error if error?
+          return done null, JSON.parse(json)
+        catch error
+          done error
 
   class Migrator
     migrations: null

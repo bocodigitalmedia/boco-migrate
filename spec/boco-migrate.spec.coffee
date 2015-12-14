@@ -66,6 +66,20 @@ describe "boco-migrate", ->
             ok()
 
     describe "Storage Adapters", ->
+      [testAdapter, adapter, resetAdapter, testMigrate, testReset, series] = []
+
+      beforeEach ->
+        testAdapter = null
+        
+        testAdapter = (adapter, done) ->
+          migrator.setStorageAdapter adapter
+        
+          resetAdapter = (done) -> adapter.reset done
+          testMigrate = (done) -> migrator.migrate null, done
+          testReset = (done) -> migrator.reset done
+        
+          series = [resetAdapter, testMigrate, testReset]
+          require("async").series series, done
 
       describe "File Storage Adapter", ->
 
@@ -73,14 +87,9 @@ describe "boco-migrate", ->
           adapter = new BocoMigrate.FileStorageAdapter
             path: "migratorStorage.json"
           
-          migrator.setStorageAdapter adapter
-          
-          migrator.migrate null, (error) ->
-            throw error if error?
-            adapter.getLatestMigrationId (error, id) ->
-              throw error if error?
-              expect(id).toEqual "migration3"
-              ok()
+          testAdapter adapter, (error) ->
+            expect(error?).toEqual false
+            ok()
 
       describe "Redis Storage Adapter", ->
 
@@ -92,14 +101,9 @@ describe "boco-migrate", ->
             keyPrefix: "migrator"
             keyJoinString: "_"
           
-          migrator.setStorageAdapter adapter
-          
-          migrator.migrate null, (error) ->
-            throw error if error?
-            adapter.getLatestMigrationId (error, id) ->
-              throw error if error?
-              expect(id).toEqual "migration3"
-              ok()
+          testAdapter adapter, (error) ->
+            expect(error?).toEqual false
+            ok()
 
     describe "Exceptions", ->
 

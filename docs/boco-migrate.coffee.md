@@ -112,6 +112,20 @@ In order for the migrator to persist its state, you must provide it with an adap
 
 The default `StorageAdapter` is non-persistent, and thus is primarily used only for testing or as the parent class for other adapters.
 
+```coffee
+testAdapter = null
+
+testAdapter = (adapter, done) ->
+  migrator.setStorageAdapter adapter
+
+  resetAdapter = (done) -> adapter.reset done
+  testMigrate = (done) -> migrator.migrate null, done
+  testReset = (done) -> migrator.reset done
+
+  series = [resetAdapter, testMigrate, testReset]
+  require("async").series series, done
+```
+
 #### File Storage Adapter
 
 The `BocoMigrate.FileStorageAdapter` writes data to the JSON file specified by the `path` provided.
@@ -120,14 +134,9 @@ The `BocoMigrate.FileStorageAdapter` writes data to the JSON file specified by t
 adapter = new BocoMigrate.FileStorageAdapter
   path: "migratorStorage.json"
 
-migrator.setStorageAdapter adapter
-
-migrator.migrate null, (error) ->
-  throw error if error?
-  adapter.getLatestMigrationId (error, id) ->
-    throw error if error?
-    expect(id).toEqual "migration3"
-    ok()
+testAdapter adapter, (error) ->
+  expect(error?).toEqual false
+  ok()
 ```
 
 #### Redis Storage Adapter
@@ -142,14 +151,9 @@ adapter = new BocoMigrate.RedisStorageAdapter
   keyPrefix: "migrator"
   keyJoinString: "_"
 
-migrator.setStorageAdapter adapter
-
-migrator.migrate null, (error) ->
-  throw error if error?
-  adapter.getLatestMigrationId (error, id) ->
-    throw error if error?
-    expect(id).toEqual "migration3"
-    ok()
+testAdapter adapter, (error) ->
+  expect(error?).toEqual false
+  ok()
 ```
 
 #### Writing an Adapter
@@ -194,7 +198,7 @@ migrator.migrate "i dont exist", (error) ->
 A CLI is provided with this package to allow you to run your migrations from the command line.
 
 ```text
-Usage: boco-migrate <options...> <command>
+Usage: boco-migrate <options...> <command> [args...]
 
 options:
   -h, --help                   show this help screen
@@ -202,15 +206,19 @@ options:
   -f, --factory=factory_path   path to the migrator factory
                                defaults to "migratorFactory.js"
 
-commands:
-  migrate
-    Migrate to the (optional) target migration id
-  rollback
-    Roll back the latest migration
-  reset
-    Roll back all migrations
-  info
-    Show migration information
+ commands:
+   migrate [migration_id]
+     Migrate to the (optional) target migration id
+   rollback
+     Roll back the latest migration
+   reset
+     Roll back all migrations
+   info
+     Show migration information
+   set-latest-migration <migration_id>
+     Set the latest migration id manually (does not run migrations).
+   reset-latest-migration
+     Reset the latest migration id.
 
 factory:
   A javascript file that exports a single async factory method,

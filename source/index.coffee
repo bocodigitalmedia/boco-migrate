@@ -53,11 +53,17 @@ configure = ($ = {}) ->
 
     constructor: (props) ->
       @[key] = val for own key, val of props
+      @path ?= $path.resolve $process.cwd(), "migratorStorage.json"
 
     setLatestMigrationId: (id, done) ->
       json = JSON.stringify latestMigrationId: id
       $fs.writeFile @path, json, (error) ->
         return done null, id
+
+    reset: (done) ->
+      $fs.unlink @path, (error) ->
+        return done error if error? and error.code isnt "ENOENT"
+        done()
 
     getLatestMigrationId: (done) ->
       $fs.readFile @path, "utf8", (error, json) =>
@@ -79,16 +85,27 @@ configure = ($ = {}) ->
       @keyPrefix ?= "migrator"
       @keyJoinString ?= ":"
 
-    getKeyName: (propName) ->
+    getKeyName: (propName = "latest_migration_id") ->
       [@keyPrefix, propName].join @keyJoinString
 
-    setLatestMigrationId: (id, done) ->
-      keyName = @getKeyName "latest_migration_id"
-      @redisClient.set keyName, id, done
+    reset: (done) ->
+      keyName = @getKeyName()
+      @redisClient.del keyName, done
+
+    setLatestMigrationId: (id = null, done) ->
+      keyName = @getKeyName()
+      json = JSON.stringify id
+      @redisClient.set keyName, json, (error) ->
+        return done error, id
 
     getLatestMigrationId: (done) ->
-      keyName = @getKeyName "latest_migration_id"
-      @redisClient.get keyName, done
+      keyName = @getKeyName()
+      @redisClient.get keyName, (error, json) ->
+        try
+          throw error if error?
+          return done null, JSON.parse(json)
+        catch error
+          done error
 
   class Migrator
     migrations: null
@@ -195,7 +212,7 @@ configure = ($ = {}) ->
                                      defaults to "migratorFactory.js"
 
       commands:
-        migrate
+        migrate [migration_id]
           Migrate to the (optional) target migration id
         rollback
           Roll back the latest migration
@@ -203,6 +220,10 @@ configure = ($ = {}) ->
           Roll back all migrations
         info
           Show migration information
+        set-latest-migration <migration_id>
+          Set the latest migration id manually (does not run migrations).
+        reset-latest-migration
+          Reset the latest migration id.
 
       factory:
         A javascript file that exports a single async factory method,
@@ -294,6 +315,13 @@ configure = ($ = {}) ->
         factory: minimist.factory
         args: minimist._.slice(1)
 
+    setLatestMigrationId: (migrator, migrationId, done) ->
+      return done "missing argument <migration_id>" unless migrationId?
+      migrator.storageAdapter.setLatestMigrationId migrationId, done
+
+    resetLatestMigrationId: (migrator, done) ->
+      migrator.storageAdapter.setLatestMigrationId undefined, done
+
     run: ->
       params = @getParams()
       {help, example, command, factory, args} = params
@@ -314,6 +342,8 @@ configure = ($ = {}) ->
           when "rollback" then @rollback migrator, done
           when "reset" then @reset migrator, done
           when "info" then @info migrator, done
+          when "set-latest-migration" then @setLatestMigrationId migrator, args[0], done
+          when "reset-latest-migration" then @resetLatestMigrationId migrator, done
           else @showHelp 1
 
   BocoMigrate =

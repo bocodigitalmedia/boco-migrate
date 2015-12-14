@@ -198,7 +198,7 @@ migrator.migrate "i dont exist", (error) ->
 A CLI is provided with this package to allow you to run your migrations from the command line.
 
 ```text
-Usage: boco-migrate <options...> <command>
+Usage: boco-migrate <options...> <command> [args...]
 
 options:
   -h, --help                   show this help screen
@@ -206,15 +206,19 @@ options:
   -f, --factory=factory_path   path to the migrator factory
                                defaults to "migratorFactory.js"
 
-commands:
-  migrate
-    Migrate to the (optional) target migration id
-  rollback
-    Roll back the latest migration
-  reset
-    Roll back all migrations
-  info
-    Show migration information
+ commands:
+   migrate [migration_id]
+     Migrate to the (optional) target migration id
+   rollback
+     Roll back the latest migration
+   reset
+     Roll back all migrations
+   info
+     Show migration information
+   set-latest-migration <migration_id>
+     Set the latest migration id manually (does not run migrations).
+   reset-latest-migration
+     Reset the latest migration id.
 
 factory:
   A javascript file that exports a single async factory method,

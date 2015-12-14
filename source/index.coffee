@@ -53,6 +53,7 @@ configure = ($ = {}) ->
 
     constructor: (props) ->
       @[key] = val for own key, val of props
+      @path ?= $path.resolve $process.cwd(), "migratorStorage.json"
 
     setLatestMigrationId: (id, done) ->
       json = JSON.stringify latestMigrationId: id
@@ -211,7 +212,7 @@ configure = ($ = {}) ->
                                      defaults to "migratorFactory.js"
 
       commands:
-        migrate
+        migrate [migration_id]
           Migrate to the (optional) target migration id
         rollback
           Roll back the latest migration
@@ -219,6 +220,10 @@ configure = ($ = {}) ->
           Roll back all migrations
         info
           Show migration information
+        set-latest-migration <migration_id>
+          Set the latest migration id manually (does not run migrations).
+        reset-latest-migration
+          Reset the latest migration id.
 
       factory:
         A javascript file that exports a single async factory method,
@@ -310,6 +315,13 @@ configure = ($ = {}) ->
         factory: minimist.factory
         args: minimist._.slice(1)
 
+    setLatestMigrationId: (migrator, migrationId, done) ->
+      return done "missing argument <migration_id>" unless migrationId?
+      migrator.storageAdapter.setLatestMigrationId migrationId, done
+
+    resetLatestMigrationId: (migrator, done) ->
+      migrator.storageAdapter.setLatestMigrationId undefined, done
+
     run: ->
       params = @getParams()
       {help, example, command, factory, args} = params
@@ -330,6 +342,8 @@ configure = ($ = {}) ->
           when "rollback" then @rollback migrator, done
           when "reset" then @reset migrator, done
           when "info" then @info migrator, done
+          when "set-latest-migration" then @setLatestMigrationId migrator, args[0], done
+          when "reset-latest-migration" then @resetLatestMigrationId migrator, done
           else @showHelp 1
 
   BocoMigrate =

@@ -137,6 +137,9 @@ configure = function($) {
         val = props[key];
         this[key] = val;
       }
+      if (this.path == null) {
+        this.path = $path.resolve($process.cwd(), "migratorStorage.json");
+      }
     }
 
     FileStorageAdapter.prototype.setLatestMigrationId = function(id, done) {
@@ -437,7 +440,7 @@ configure = function($) {
     CLI.prototype.getHelp = function() {
       var cmd;
       cmd = $path.basename($process.argv[1]);
-      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  -h, --help                   show this help screen\n  -e, --example                show an example migrator factory\n  -f, --factory=factory_path   path to the migrator factory\n                               defaults to \"migratorFactory.js\"\n\ncommands:\n  migrate\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the latest migration\n  reset\n    Roll back all migrations\n  info\n    Show migration information\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
+      return "Usage: " + cmd + " <options...> <command>\n\noptions:\n  -h, --help                   show this help screen\n  -e, --example                show an example migrator factory\n  -f, --factory=factory_path   path to the migrator factory\n                               defaults to \"migratorFactory.js\"\n\ncommands:\n  migrate [migration_id]\n    Migrate to the (optional) target migration id\n  rollback\n    Roll back the latest migration\n  reset\n    Roll back all migrations\n  info\n    Show migration information\n  set-latest-migration <migration_id>\n    Set the latest migration id manually (does not run migrations).\n  reset-latest-migration\n    Reset the latest migration id.\n\nfactory:\n  A javascript file that exports a single async factory method,\n  returning a migrator instance for the CLI.";
     };
 
     CLI.prototype.showHelp = function(code) {
@@ -530,6 +533,17 @@ configure = function($) {
       };
     };
 
+    CLI.prototype.setLatestMigrationId = function(migrator, migrationId, done) {
+      if (migrationId == null) {
+        return done("missing argument <migration_id>");
+      }
+      return migrator.storageAdapter.setLatestMigrationId(migrationId, done);
+    };
+
+    CLI.prototype.resetLatestMigrationId = function(migrator, done) {
+      return migrator.storageAdapter.setLatestMigrationId(void 0, done);
+    };
+
     CLI.prototype.run = function() {
       var args, command, done, example, factory, help, params;
       params = this.getParams();
@@ -563,6 +577,10 @@ configure = function($) {
               return _this.reset(migrator, done);
             case "info":
               return _this.info(migrator, done);
+            case "set-latest-migration":
+              return _this.setLatestMigrationId(migrator, args[0], done);
+            case "reset-latest-migration":
+              return _this.resetLatestMigrationId(migrator, done);
             default:
               return _this.showHelp(1);
           }

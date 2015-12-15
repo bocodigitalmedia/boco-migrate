@@ -27,6 +27,9 @@ configure = function($) {
       }
       Error.captureStackTrace(this, this.constructor);
       this.name = this.constructor.name;
+      if (this.getMessage != null) {
+        this.message = this.getMessage();
+      }
     }
 
     return MigrateError;
@@ -51,7 +54,13 @@ configure = function($) {
       return MigrationNotFound.__super__.constructor.apply(this, arguments);
     }
 
+    MigrationNotFound.prototype.migrationId = null;
+
     MigrationNotFound.prototype.message = "Migration not found";
+
+    MigrationNotFound.prototype.getMessage = function() {
+      return "Migration not found (" + this.migrationId + ")";
+    };
 
     return MigrationNotFound;
 
@@ -297,7 +306,9 @@ configure = function($) {
         return migration.id === id;
       });
       if (!((index != null) && index > -1)) {
-        throw new MigrationNotFound;
+        throw new MigrationNotFound({
+          migrationId: id
+        });
       }
       return index;
     };
@@ -514,7 +525,7 @@ configure = function($) {
       argv = $process.argv.slice(2);
       minimist = $minimist(argv, {
         boolean: ["example", "help"],
-        string: ["factory"],
+        string: ["factory", "_"],
         "default": {
           factory: "migratorFactory.js"
         },

@@ -12,12 +12,16 @@ configure = ($ = {}) ->
       @[key] = val for own key, val of props
       Error.captureStackTrace @, @constructor
       @name = @constructor.name
+      @message = @getMessage() if @getMessage?
 
   class IdentityNotUnique extends MigrateError
     message: "Identity not unique"
 
   class MigrationNotFound extends MigrateError
+    migrationId: null
     message: "Migration not found"
+    getMessage: ->
+      "Migration not found (#{@migrationId})"
 
   class IrreversibleMigration extends MigrateError
     message: "Irreversible Migration"
@@ -130,7 +134,7 @@ configure = ($ = {}) ->
 
     findMigrationIndexById: (id) ->
       index = $lodash.findIndex @migrations, (migration) -> migration.id is id
-      throw new MigrationNotFound unless index? and index > -1
+      throw new MigrationNotFound(migrationId: id) unless index? and index > -1
       return index
 
     getLatestMigrationIndex: (done) ->
@@ -300,7 +304,7 @@ configure = ($ = {}) ->
 
       minimist = $minimist argv,
         boolean: ["example", "help"]
-        string: ["factory"]
+        string: ["factory", "_"]
         default:
           factory: "migratorFactory.js"
         alias:
